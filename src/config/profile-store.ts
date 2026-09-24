@@ -4,6 +4,8 @@ import * as lockfile from 'proper-lockfile';
 import { writeFileAtomic } from '../platform/atomic-write';
 import { resolveAppPaths } from './app-paths';
 import {
+  AGENT_KINDS,
+  isAgentKind,
   normalizeProfileConfig,
   type AgentKind,
   type ProfileConfig,
@@ -24,7 +26,13 @@ export async function loadRootConfig(path: string): Promise<RootConfig | undefin
 function normalizeRootConfig(root: RootConfig): RootConfig {
   const profiles: RootConfig['profiles'] = {};
   for (const [name, profile] of Object.entries(root.profiles)) {
-    profiles[name] = normalizeProfileConfig(profile);
+    try {
+      profiles[name] = normalizeProfileConfig(profile);
+    } catch (err) {
+      // Name the offending profile: one bad entry otherwise reads like the
+      // whole config is broken.
+      throw new Error(`profile ${name}: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
   const migrations = normalizeRootMigrations(root.migrations);
   return {
@@ -57,6 +65,7 @@ type StoredProfileConfig = Pick<
   | 'workspaces'
   | 'permissions'
   | 'codex'
+  | 'copilotStudio'
   | 'attachments'
   | 'comments'
   | 'meeting'
@@ -96,6 +105,7 @@ function serializeProfileConfig(profile: ProfileConfig): StoredProfileConfig {
     workspaces: profile.workspaces,
     permissions: profile.permissions,
     ...(profile.codex ? { codex: profile.codex } : {}),
+    ...(profile.copilotStudio ? { copilotStudio: profile.copilotStudio } : {}),
     attachments: profile.attachments,
     comments: {},
     meeting: profile.meeting,
@@ -296,7 +306,7 @@ async function pathExists(path: string): Promise<boolean> {
 }
 
 export function agentKindFromString(value: string | undefined): AgentKind | undefined {
-  if (value === 'claude' || value === 'codex') return value;
+  if (isAgentKind(value)) return value;
   if (value === undefined) return undefined;
-  throw new Error(`unsupported agent: ${value}`);
+  throw new Error(`unsupported agent: ${value} (expected one of ${AGENT_KINDS.join(', ')})`);
 }

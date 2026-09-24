@@ -133,8 +133,15 @@ export function OnboardWizard({ onCreated }: { onCreated: (profile: string) => v
             <SelectContent>
               <SelectItem value="claude">Claude Code</SelectItem>
               <SelectItem value="codex">Codex</SelectItem>
+              <SelectItem value="copilot-studio">Copilot Studio</SelectItem>
             </SelectContent>
           </Select>
+          {agentKind === "copilot-studio" && (
+            <p className="text-xs text-muted-foreground">
+              创建后还需在本机终端运行 <code>lark-channel-bridge copilot-studio setup --profile &lt;名称&gt;</code>{" "}
+              录入 Direct Line secret 并配置 MCP，profile 才能上线。
+            </p>
+          )}
         </div>
         <div className="space-y-1.5">
           <Label>Profile 名称</Label>

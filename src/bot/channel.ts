@@ -5,7 +5,7 @@ import type {
 } from '@larksuite/channel';
 import { createLarkChannel } from '@larksuite/channel';
 import { dirname, join } from 'node:path';
-import { claudeCapability, codexCapability } from '../agent/capability';
+import { capabilityForProfile } from '../agent/capability';
 import { modelLabel, normalizeModelSelection, resolveModelArg } from '../agent/models';
 import {
   buildAgentPrompt,
@@ -484,6 +484,23 @@ export async function startChannel(deps: StartChannelDeps): Promise<BridgeChanne
       ...(identity.name ? { name: identity.name } : {}),
     });
   }
+  // Copilot Studio full mode: high-risk commands wait for the owner, who is
+  // asked in their DM with the bot and answers with /approve or /reject.
+  const disposeApprovalNotifier = agent.setApprovalNotifier?.(async (request) => {
+    const owner = controls.botOwnerId;
+    if (!owner) throw new Error('bot owner is unknown; cannot ask for approval');
+    const minutes = Math.max(1, Math.round((request.expiresAt - Date.now()) / 60_000));
+    await channel.send(owner, {
+      markdown: [
+        `⚠️ **需要你确认的操作**（${request.reason}）`,
+        '',
+        '```',
+        request.commandText,
+        '```',
+        `回复 \`/approve ${request.code}\` 执行，或 \`/reject ${request.code}\` 拒绝（${minutes} 分钟内有效，超时视为拒绝）。`,
+      ].join('\n'),
+    });
+  });
   log.info('ws', 'connected', {
     bot: identity?.name ?? 'unknown',
     openId: identity?.openId ?? '-',
@@ -510,6 +527,7 @@ export async function startChannel(deps: StartChannelDeps): Promise<BridgeChanne
     channel,
     disconnect: async () => {
       activeRuns.pauseNewRuns('bridge-disconnect');
+      disposeApprovalNotifier?.();
       ownerRefresh.stop();
       knownChatsRefresh.stop();
       keepalive.stop();
@@ -914,6 +932,7 @@ async function runAgentBatch(deps: RunBatchDeps): Promise<void> {
       ]
     : undefined;
 
+  const capability = capabilityForProfile(controls.profileConfig);
   const prompt = buildPrompt(
     batch,
     attachments,
@@ -921,6 +940,12 @@ async function runAgentBatch(deps: RunBatchDeps): Promise<void> {
     topicContext,
     channel.botIdentity,
     extraInstructions,
+    // A remote agent (Copilot Studio) has no local terminal/env; the local
+    // bridge instructions would be wrong there, not merely unused.
+    capability.remote ? [] : BRIDGE_AGENT_INSTRUCTIONS,
+    // Local agents learn the bot's name from the bridge system prompt; a
+    // remote agent only sees the message, so name the bot in its context.
+    capability.remote,
   );
   log.info('prompt', 'built', {
     promptChars: prompt.length,
@@ -951,14 +976,11 @@ async function runAgentBatch(deps: RunBatchDeps): Promise<void> {
       : canUseGroup(controls.profileConfig, controls, firstMsg.chatId, firstMsg.senderId);
   const scopeContext: ScopeContext = {
     source: 'im',
+    chatType: firstMsg.chatType,
     chatId,
     actorId: firstMsg.senderId,
     ...(threadId ? { threadId } : {}),
   };
-  const capability =
-    controls.profileConfig.agentKind === 'codex'
-      ? codexCapability(controls.profileConfig)
-      : claudeCapability(controls.profileConfig);
   const flow = await startRunFlow({
     scopeId: scope,
     scope: scopeContext,
@@ -1807,6 +1829,8 @@ function buildPrompt(
   topicContext: QuotedContext[] = [],
   botIdentity?: { openId: string; name?: string },
   extraInstructions?: string[],
+  baseInstructions: readonly string[] = BRIDGE_AGENT_INSTRUCTIONS,
+  includeBotName = false,
 ): string {
   const first = batch[0];
   if (!first) return '';
@@ -1841,6 +1865,7 @@ function buildPrompt(
       ...(first.senderName ? { senderName: first.senderName } : {}),
       ...(senderType ? { senderType } : {}),
       ...(botIdentity?.openId ? { botOpenId: botIdentity.openId } : {}),
+      ...(includeBotName && botIdentity?.name ? { botName: botIdentity.name } : {}),
       ...(mentions.length > 0 ? { mentions } : {}),
       ...(first.threadId ? { threadId: first.threadId } : {}),
       messageIds: batch.map((m) => m.messageId),
@@ -1848,8 +1873,8 @@ function buildPrompt(
     },
     instructions:
       extraInstructions && extraInstructions.length > 0
-        ? [...BRIDGE_AGENT_INSTRUCTIONS, ...extraInstructions]
-        : BRIDGE_AGENT_INSTRUCTIONS,
+        ? [...baseInstructions, ...extraInstructions]
+        : [...baseInstructions],
     userInput: userPart,
     ...(topicContext.length > 0 ? { topicContext: topicContext.map(toPromptTopicMessage) } : {}),
     quotedMessages: quotes.map(toPromptQuote),

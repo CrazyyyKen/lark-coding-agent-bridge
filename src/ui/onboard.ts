@@ -9,7 +9,7 @@ import {
   withConfigFileLock,
   writeActiveProfile,
 } from '../config/profile-store';
-import type { AgentKind } from '../config/profile-schema';
+import { isAgentKind, type AgentKind } from '../config/profile-schema';
 import { secretKeyForApp, type AppConfig, type TenantBrand } from '../config/schema';
 import { buildEncryptedAccountConfig } from '../config/store';
 import { createBootstrapProfileConfig } from '../cli/profile-bootstrap';
@@ -41,6 +41,16 @@ function asRecord(body: unknown): Record<string, unknown> {
     throw new HttpError(400, 'expected a JSON object body');
   }
   return body as Record<string, unknown>;
+}
+
+/**
+ * The web client's agent choice. Absent means the historical default (Claude);
+ * anything else must be a known kind — never silently mapped to Claude.
+ */
+export function parseOnboardAgentKind(v: unknown): AgentKind {
+  if (v === undefined || v === null || v === '') return 'claude';
+  if (isAgentKind(v)) return v;
+  throw new HttpError(400, `不支持的 agent 类型：${String(v)}`);
 }
 
 function readTenant(v: unknown): TenantBrand {
@@ -77,7 +87,7 @@ export interface CreateProfileInput {
  */
 export async function onboardCreate(body: unknown, rootDir?: string) {
   const fv = asRecord(body);
-  const agentKind: AgentKind = fv.agentKind === 'codex' ? 'codex' : 'claude';
+  const agentKind = parseOnboardAgentKind(fv.agentKind);
   const input: CreateProfileInput = {
     profile: String(fv.profile ?? '').trim() || agentKind,
     agentKind,

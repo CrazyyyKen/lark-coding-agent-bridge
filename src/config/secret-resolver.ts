@@ -4,6 +4,7 @@ import type { Readable, Writable } from 'node:stream';
 import { spawnProcess, type SpawnedProcessByStdio } from '../platform/spawn';
 import { getSecret, type KeystorePaths } from './keystore';
 import { paths } from './paths';
+import type { CopilotSecretInput } from './profile-schema';
 import type { AppConfig, ProviderConfig, SecretInput, SecretRef } from './schema';
 import { isSecretRef, secretKeyForApp } from './schema';
 
@@ -64,6 +65,70 @@ async function resolveSecretInput(
     default:
       throw new Error(`unknown secret source: ${(input as { source?: string }).source}`);
   }
+}
+
+/**
+ * Resolve a Copilot Studio secret (Direct Line secret, MCP API key).
+ *
+ * Unlike the App Secret path, plaintext strings are refused: these secrets
+ * must live in the profile keystore (`copilot-studio setup`), an env var
+ * (`${VAR}` or `{source:"env"}`), a file, or an exec provider. `label` is
+ * the config field name used in errors; values never appear in messages.
+ */
+export async function resolveCopilotSecret(
+  input: CopilotSecretInput | undefined,
+  label: string,
+  secretsCfg: AppConfig['secrets'],
+  secretPaths: KeystorePaths = paths,
+): Promise<string> {
+  if (input === undefined || input === '') {
+    throw new Error(`${label} is not configured; run \`lark-channel-bridge copilot-studio setup\``);
+  }
+  if (typeof input === 'string') {
+    if (!ENV_TEMPLATE_RE.test(input)) {
+      throw new Error(
+        `${label} is a plaintext value in config.json; store it with ` +
+          '`lark-channel-bridge copilot-studio setup` or reference an env var as "${VAR}"',
+      );
+    }
+    return resolvePlainOrTemplate(input);
+  }
+  if (input.source === 'keystore') {
+    const value = await getSecret(input.id, secretPaths);
+    if (!value) throw new Error(`${label}: keystore has no entry "${input.id}"`);
+    return value;
+  }
+  switch (input.source) {
+    case 'env':
+      return resolveEnvRef(input, lookupProvider(secretsCfg, input));
+    case 'file':
+      return resolveFileRef(input, lookupProvider(secretsCfg, input));
+    case 'exec': {
+      const pc = lookupProvider(secretsCfg, input);
+      if (!pc?.command) throw new Error(`${label}: exec provider missing \`command\``);
+      if (isSelfBridgeCommand(pc.command, pc.args)) {
+        const value = await getSecret(input.id, secretPaths);
+        if (value === undefined) throw new Error(`${label}: keystore has no entry "${input.id}"`);
+        return value;
+      }
+      return spawnExecProvider(pc, input);
+    }
+    default:
+      throw new Error(`${label}: unknown secret source`);
+  }
+}
+
+/**
+ * Env var names a Copilot secret input reads, so callers can strip them from
+ * the environment of child processes (lark-cli must never inherit them).
+ */
+export function copilotSecretEnvNames(input: CopilotSecretInput | undefined): string[] {
+  if (!input) return [];
+  if (typeof input === 'string') {
+    const m = ENV_TEMPLATE_RE.exec(input);
+    return m?.[1] ? [m[1]] : [];
+  }
+  return input.source === 'env' ? [input.id] : [];
 }
 
 function resolvePlainOrTemplate(value: string): string {

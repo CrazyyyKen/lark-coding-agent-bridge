@@ -2,6 +2,7 @@ import type {
   AppCredentials,
   AppPreferences,
   MessageReplyMode,
+  SecretInput,
   SecretsConfig,
 } from './schema';
 import {
@@ -13,9 +14,27 @@ import {
   type PermissionSource,
 } from './permissions';
 
-export type AgentKind = 'claude' | 'codex';
+export type AgentKind = 'claude' | 'codex' | 'copilot-studio';
 export type SandboxMode = CodexSandboxMode;
 export type { AccessMode, PermissionConfig, PermissionSource };
+
+export const AGENT_KINDS: readonly AgentKind[] = ['claude', 'codex', 'copilot-studio'];
+
+export function isAgentKind(value: unknown): value is AgentKind {
+  return typeof value === 'string' && (AGENT_KINDS as readonly string[]).includes(value);
+}
+
+/** Human-facing agent name for a profile's agent kind. */
+export function agentKindDisplayName(kind: AgentKind): string {
+  switch (kind) {
+    case 'claude':
+      return 'Claude Code';
+    case 'codex':
+      return 'Codex CLI';
+    case 'copilot-studio':
+      return 'Copilot Studio';
+  }
+}
 
 export interface ProfileAccess {
   allowedUsers: string[];
@@ -49,6 +68,89 @@ export interface CodexConfig {
   inheritCodexHome?: boolean;
   ignoreUserConfig?: boolean;
   ignoreRules?: boolean;
+}
+
+/**
+ * Secret reference stored in the profile's encrypted keystore
+ * (`profiles/<name>/secrets.enc`). Bridge-only: lark-cli never reads the
+ * `copilotStudio` section, so this does not need to match lark-cli's
+ * SecretRef union.
+ */
+export interface KeystoreSecretRef {
+  source: 'keystore';
+  id: string;
+}
+
+/**
+ * Copilot Studio secrets. Plaintext strings are rejected at resolve time —
+ * only `${ENV}` templates, env/file/exec SecretRefs and keystore refs.
+ */
+export type CopilotSecretInput = SecretInput | KeystoreSecretRef;
+
+export interface CopilotStudioMcpConfig {
+  /** Local listener address. Loopback by default; expose only via a tunnel. */
+  bindHost: string;
+  port: number;
+  /** Route that serves MCP; everything else (except /healthz) is 404. */
+  path: string;
+  /** User-provided public HTTPS URL configured in Copilot Studio (display only). */
+  publicUrl?: string;
+  /** Independent secret the Studio MCP connection sends as an API key. */
+  authSecret?: CopilotSecretInput;
+  /** Header Studio sends the API key in. `Authorization: Bearer` is also accepted. */
+  authHeader: string;
+  /** Browser origins allowed to call MCP. Empty = reject any request with an Origin header. */
+  allowedOrigins: string[];
+  /** Max tool calls one execution token may make. */
+  maxCallsPerRun: number;
+}
+
+/**
+ * - `read-only`: only the curated built-in read operations (default).
+ * - `full`: any lark-cli command except auth/config/profile/update/api and
+ *   identity overrides; commands lark-cli marks high-risk (and anything that
+ *   deletes/removes/recalls/reverts/transfers) need the owner's approval in Lark.
+ */
+export type CopilotCliMode = 'read-only' | 'full';
+
+export interface CopilotStudioCliConfig {
+  mode: CopilotCliMode;
+  /** How long a high-risk command waits for /approve before it is rejected. */
+  approvalTimeoutMs: number;
+  /** Native lark-cli executable. Resolved locally; never chosen by the model. */
+  binaryPath?: string;
+  /**
+   * Built-in operation ids enabled for this profile (see
+   * agent/copilot-studio/cli-policy.ts). Absent = every built-in operation.
+   * Config can only narrow the built-in set, never add operations.
+   */
+  allowedOperations?: string[];
+  timeoutMs: number;
+  maxOutputBytes: number;
+}
+
+export interface CopilotStudioConfig {
+  directLineBaseUrl: string;
+  directLineSecret?: CopilotSecretInput;
+  pollIntervalMs: number;
+  /** Overall per-turn deadline. */
+  turnTimeoutMs: number;
+  /**
+   * Degraded completion: with no explicit end-of-turn signal, finish once a
+   * reply has arrived, no tool call is in flight and the conversation has
+   * been silent this long. See docs/copilot-studio.md.
+   */
+  quietWindowMs: number;
+  /**
+   * Exact text the published Studio instructions tell the agent to put at
+   * the end of its final reply. Stripped before rendering. Empty disables
+   * marker-based completion (quiet window only).
+   */
+  completionMarker: string;
+  /** Upper bound on the text sent to Studio per turn. */
+  maxMessageChars: number;
+  mcp: CopilotStudioMcpConfig;
+  cli: CopilotStudioCliConfig;
 }
 
 export interface AttachmentConfig {
@@ -160,6 +262,8 @@ export interface ProfileConfig {
   permissions: PermissionConfig;
   permissionSource?: PermissionSource;
   codex?: CodexConfig;
+  /** Present for (and only meaningful to) `agentKind: 'copilot-studio'`. */
+  copilotStudio?: CopilotStudioConfig;
   attachments: AttachmentConfig;
   comments: CommentConfig;
   /** In-meeting agent settings. See {@link MeetingConfig}. */
@@ -204,6 +308,7 @@ export interface CreateDefaultProfileConfigInput {
   sandbox?: Partial<SandboxConfig>;
   permissions?: Partial<PermissionConfig>;
   codex?: CodexConfig;
+  copilotStudio?: Partial<CopilotStudioConfig>;
   secrets?: SecretsConfig;
 }
 
@@ -239,6 +344,7 @@ export function normalizeProfileConfig(input: unknown): ProfileConfig {
     sandbox?: Partial<SandboxConfig>;
     permissions?: Partial<PermissionConfig>;
     codex?: CodexConfig & { flags?: unknown };
+    copilotStudio?: unknown;
     attachments?: Partial<AttachmentConfig>;
     comments?: unknown;
     meeting?: unknown;
@@ -248,8 +354,10 @@ export function normalizeProfileConfig(input: unknown): ProfileConfig {
   if (raw.schemaVersion !== 2) {
     throw new Error('profile schemaVersion must be 2');
   }
-  if (raw.agentKind !== 'claude' && raw.agentKind !== 'codex') {
-    throw new Error('agentKind must be claude or codex');
+  if (!isAgentKind(raw.agentKind)) {
+    throw new Error(
+      `agentKind must be one of ${AGENT_KINDS.join(', ')} (got ${JSON.stringify(raw.agentKind)})`,
+    );
   }
   const accounts = normalizeAccounts(raw.accounts);
   if (raw.agentKind === 'codex' && !raw.codex) {
@@ -264,6 +372,11 @@ export function normalizeProfileConfig(input: unknown): ProfileConfig {
   const { permissions, source: permissionSource } = normalizePermissions({
     permissions: raw.permissions,
     sandbox: raw.sandbox,
+    // Copilot Studio only executes an explicit read-only lark-cli policy, so a
+    // fresh profile starts (and is capped) at read-only; see capability.ts.
+    ...(raw.agentKind === 'copilot-studio' && raw.permissions === undefined && !raw.sandbox
+      ? { permissions: { defaultAccess: 'read-only', maxAccess: 'read-only' } }
+      : {}),
   });
   const sandbox = permissionsToLegacySandbox(permissions);
   const workspaces = normalizeWorkspaces(raw.workspaces);
@@ -284,6 +397,9 @@ export function normalizeProfileConfig(input: unknown): ProfileConfig {
     permissions,
     permissionSource,
     ...(raw.codex ? { codex: normalizeCodex(raw.codex) } : {}),
+    ...(raw.agentKind === 'copilot-studio' || raw.copilotStudio !== undefined
+      ? { copilotStudio: normalizeCopilotStudio(raw.copilotStudio) }
+      : {}),
     attachments: {
       maxCount: numberOr(raw.attachments?.maxCount, 10),
       maxBytes: numberOr(raw.attachments?.maxBytes, 100 * 1024 * 1024),
@@ -389,6 +505,119 @@ function normalizeCodex(input: CodexConfig & { flags?: unknown }): CodexConfig {
     ignoreRules: input.ignoreRules !== false,
   };
   return codex;
+}
+
+export const COPILOT_STUDIO_DEFAULTS = {
+  directLineBaseUrl: 'https://directline.botframework.com',
+  pollIntervalMs: 1000,
+  turnTimeoutMs: 180_000,
+  quietWindowMs: 8000,
+  completionMarker: '[[turn-complete]]',
+  maxMessageChars: 24_000,
+  mcp: {
+    bindHost: '127.0.0.1',
+    port: 47_821,
+    path: '/mcp',
+    authHeader: 'x-api-key',
+    maxCallsPerRun: 25,
+  },
+  cli: {
+    mode: 'read-only',
+    approvalTimeoutMs: 120_000,
+    timeoutMs: 60_000,
+    maxOutputBytes: 256 * 1024,
+  },
+} as const;
+
+function normalizeCopilotStudio(input: unknown): CopilotStudioConfig {
+  const raw = (input && typeof input === 'object' && !Array.isArray(input) ? input : {}) as {
+    directLineBaseUrl?: unknown;
+    directLineSecret?: unknown;
+    pollIntervalMs?: unknown;
+    turnTimeoutMs?: unknown;
+    quietWindowMs?: unknown;
+    completionMarker?: unknown;
+    maxMessageChars?: unknown;
+    mcp?: unknown;
+    cli?: unknown;
+  };
+  const mcp = (raw.mcp && typeof raw.mcp === 'object' && !Array.isArray(raw.mcp) ? raw.mcp : {}) as {
+    bindHost?: unknown;
+    port?: unknown;
+    path?: unknown;
+    publicUrl?: unknown;
+    authSecret?: unknown;
+    authHeader?: unknown;
+    allowedOrigins?: unknown;
+    maxCallsPerRun?: unknown;
+  };
+  const cli = (raw.cli && typeof raw.cli === 'object' && !Array.isArray(raw.cli) ? raw.cli : {}) as {
+    mode?: unknown;
+    approvalTimeoutMs?: unknown;
+    binaryPath?: unknown;
+    allowedOperations?: unknown;
+    timeoutMs?: unknown;
+    maxOutputBytes?: unknown;
+  };
+  const d = COPILOT_STUDIO_DEFAULTS;
+  const directLineSecret = copilotSecretOrUndefined(raw.directLineSecret);
+  const authSecret = copilotSecretOrUndefined(mcp.authSecret);
+  const mcpPath = typeof mcp.path === 'string' && /^\/[A-Za-z0-9._~/-]*$/.test(mcp.path) ? mcp.path : d.mcp.path;
+  const authHeader =
+    typeof mcp.authHeader === 'string' && /^[A-Za-z0-9-]{1,64}$/.test(mcp.authHeader)
+      ? mcp.authHeader.toLowerCase()
+      : d.mcp.authHeader;
+  return {
+    directLineBaseUrl: nonEmptyString(raw.directLineBaseUrl) ?? d.directLineBaseUrl,
+    ...(directLineSecret ? { directLineSecret } : {}),
+    pollIntervalMs: clampNumber(raw.pollIntervalMs, 250, 10_000, d.pollIntervalMs),
+    turnTimeoutMs: clampNumber(raw.turnTimeoutMs, 10_000, 30 * 60_000, d.turnTimeoutMs),
+    quietWindowMs: clampNumber(raw.quietWindowMs, 1000, 120_000, d.quietWindowMs),
+    completionMarker:
+      typeof raw.completionMarker === 'string' ? raw.completionMarker.trim() : d.completionMarker,
+    maxMessageChars: clampNumber(raw.maxMessageChars, 1000, 200_000, d.maxMessageChars),
+    mcp: {
+      bindHost: nonEmptyString(mcp.bindHost) ?? d.mcp.bindHost,
+      port: clampNumber(mcp.port, 1, 65_535, d.mcp.port),
+      path: mcpPath,
+      ...(nonEmptyString(mcp.publicUrl) ? { publicUrl: nonEmptyString(mcp.publicUrl) } : {}),
+      ...(authSecret ? { authSecret } : {}),
+      authHeader,
+      allowedOrigins: stringArray(mcp.allowedOrigins),
+      maxCallsPerRun: clampNumber(mcp.maxCallsPerRun, 1, 500, d.mcp.maxCallsPerRun),
+    },
+    cli: {
+      mode: cli.mode === 'full' ? 'full' : 'read-only',
+      approvalTimeoutMs: clampNumber(cli.approvalTimeoutMs, 15_000, 10 * 60_000, d.cli.approvalTimeoutMs),
+      ...(nonEmptyString(cli.binaryPath) ? { binaryPath: nonEmptyString(cli.binaryPath) } : {}),
+      ...(Array.isArray(cli.allowedOperations)
+        ? { allowedOperations: stringArray(cli.allowedOperations) }
+        : {}),
+      timeoutMs: clampNumber(cli.timeoutMs, 1000, 10 * 60_000, d.cli.timeoutMs),
+      maxOutputBytes: clampNumber(cli.maxOutputBytes, 1024, 8 * 1024 * 1024, d.cli.maxOutputBytes),
+    },
+  };
+}
+
+/** Keep structurally valid secret inputs; the resolver decides what is allowed. */
+function copilotSecretOrUndefined(value: unknown): CopilotSecretInput | undefined {
+  if (typeof value === 'string') return value.length > 0 ? value : undefined;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const ref = value as { source?: unknown; id?: unknown; provider?: unknown };
+  if (typeof ref.id !== 'string' || !ref.id) return undefined;
+  if (ref.source === 'keystore') return { source: 'keystore', id: ref.id };
+  if (ref.source === 'env' || ref.source === 'file' || ref.source === 'exec') {
+    return {
+      source: ref.source,
+      id: ref.id,
+      ...(typeof ref.provider === 'string' ? { provider: ref.provider } : {}),
+    };
+  }
+  return undefined;
+}
+
+function nonEmptyString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
 }
 
 function normalizeComments(_input: unknown): CommentConfig {

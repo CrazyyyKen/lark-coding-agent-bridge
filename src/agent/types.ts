@@ -82,6 +82,13 @@ export interface AgentAdapter {
   isAvailable(): Promise<boolean>;
   checkAvailability?(): Promise<AgentAvailability>;
   prepareRun?(opts: AgentRunOptions): Promise<void>;
+  /**
+   * Bring up long-lived services the adapter owns (e.g. Copilot Studio's MCP
+   * listener) before the channel connects. Local CLI adapters omit it.
+   */
+  start?(): Promise<void>;
+  /** Release what `start()` acquired. Must be safe to call more than once. */
+  dispose?(): Promise<void>;
   run(opts: AgentRunOptions): AgentRun;
   /**
    * Late-bound identity injection: the adapter is constructed before the
@@ -89,4 +96,19 @@ export interface AgentAdapter {
    * Adapters that don't bake identity into their prompts may omit it.
    */
   setBotIdentity?(identity: AgentBotIdentity): void;
+  /**
+   * Agents that can ask the owner to approve an action (Copilot Studio full
+   * mode) take a way to message the owner. Returns a disposer.
+   */
+  setApprovalNotifier?(notifier: (request: AgentApprovalRequest) => Promise<void>): () => void;
+  /** Answer a pending approval by its code. False if unknown/expired. */
+  resolveApproval?(code: string, decision: 'approved' | 'rejected'): boolean;
+}
+
+export interface AgentApprovalRequest {
+  code: string;
+  runId: string;
+  commandText: string;
+  reason: string;
+  expiresAt: number;
 }

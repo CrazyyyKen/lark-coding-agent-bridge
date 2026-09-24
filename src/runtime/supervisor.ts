@@ -141,6 +141,9 @@ class ManagedProfile {
     } catch (err) {
       log.warn('supervisor', 'disconnect-failed', { profile: this.profile, err: String(err) });
     }
+    await this.agent.dispose?.().catch((err) =>
+      log.warn('supervisor', 'agent-dispose-failed', { profile: this.profile, err: String(err) }),
+    );
     if (this.entry) {
       await unregister(this.entry.id, this.appPaths.userRegistryFile).catch(() => undefined);
     }
@@ -200,6 +203,7 @@ class ManagedProfile {
     if (this.restarting) return;
     this.restarting = true;
     let nextAppLock: AcquiredRuntimeLock | undefined;
+    let startedNextAgent: AgentAdapter | undefined;
     try {
       const nextRuntime = await resolveProfileRuntime({
         config: this.configPath,
@@ -209,12 +213,20 @@ class ManagedProfile {
       const next = nextRuntime.cfg;
       if (!isComplete(next)) throw new Error('config incomplete after change');
       assertReconnectAgentKindUnchanged(this.profileConfig.agentKind, nextRuntime.profileConfig.agentKind);
-      const nextAgent = createRuntimeAgent(nextRuntime.profileConfig, {
-        ...nextRuntime.appPaths,
-        configPath: nextRuntime.configPath,
-      });
+      const nextAgent = createRuntimeAgent(
+        nextRuntime.profileConfig,
+        {
+          ...nextRuntime.appPaths,
+          configPath: nextRuntime.configPath,
+        },
+        next.secrets,
+      );
       const availability = await checkRuntimeAgentAvailability(nextAgent);
       if (!availability.ok) throw availability.error;
+      // Services are ref-counted per profile, so starting the next adapter
+      // before the old one is disposed keeps the same MCP listener.
+      await nextAgent.start?.();
+      startedNextAgent = nextAgent;
 
       const appChanged = next.accounts.app.id !== this.cfg.accounts.app.id;
       if (appChanged) {
@@ -258,10 +270,17 @@ class ManagedProfile {
       }
       this.cfg = next;
       this.profileConfig = nextRuntime.profileConfig;
+      const previousAgent = this.agent;
       this.agent = nextAgent;
+      startedNextAgent = undefined;
       this.controls = nextControls;
+      await previousAgent.dispose?.().catch((err) =>
+        log.warn('supervisor', 'agent-dispose-failed', { profile: this.profile, err: String(err) }),
+      );
     } finally {
       if (nextAppLock) await nextAppLock.release().catch(() => undefined);
+      // A failed restart must not leak the half-started next adapter.
+      if (startedNextAgent) await startedNextAgent.dispose?.().catch(() => undefined);
       this.restarting = false;
     }
   }
@@ -331,7 +350,7 @@ export class Supervisor {
       });
     }
 
-    const agent = createRuntimeAgent(profileConfig, { ...appPaths, configPath });
+    const agent = createRuntimeAgent(profileConfig, { ...appPaths, configPath }, cfg.secrets);
     if (this.opts.runPreflight !== false) {
       const availability = await checkRuntimeAgentAvailability(agent);
       if (!availability.ok) throw availability.error;
@@ -357,7 +376,13 @@ export class Supervisor {
       this.startChannelFn,
       (p) => void this.stopProfile(p).catch(() => undefined),
     );
-    await managed.bringUp(new Date().toISOString());
+    await agent.start?.();
+    try {
+      await managed.bringUp(new Date().toISOString());
+    } catch (err) {
+      await agent.dispose?.().catch(() => undefined);
+      throw err;
+    }
     this.managed.set(appPaths.profile, managed);
     log.info('supervisor', 'profile-online', { profile: appPaths.profile, appId: cfg.accounts.app.id });
   }

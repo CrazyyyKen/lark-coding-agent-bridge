@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, isAbsolute } from 'node:path';
 import type { LarkChannel, NormalizedMessage } from '@larksuite/channel';
-import { claudeCapability, codexCapability } from '../agent/capability';
+import { capabilityForProfile, type AgentCapabilityId } from '../agent/capability';
 import { DEFAULT_MODEL, normalizeModelSelection, supportedModels } from '../agent/models';
 import type { AgentAdapter } from '../agent/types';
 import type { ActiveRuns } from '../bot/active-runs';
@@ -47,6 +47,7 @@ import { accessToClaudePermissionMode } from '../config/permissions';
 import {
   canRunAdminCommand,
   canUseDm,
+  isCreator,
   canUseGroup,
   type OwnerRefreshState,
 } from '../policy/access';
@@ -153,7 +154,7 @@ type Handler = (args: string, ctx: CommandContext) => Promise<void>;
 
 interface ResumeCandidate {
   scopeId: string;
-  agentId: 'claude' | 'codex';
+  agentId: AgentCapabilityId;
   cwdRealpath: string;
   policyFingerprint: string;
   sessionId?: string;
@@ -186,7 +187,42 @@ const handlers: Record<string, Handler> = {
   '/invite': handleInvite,
   '/remove': handleRemove,
   '/meeting': handleMeeting,
+  '/approve': (args, ctx) => handleApproval(args, ctx, 'approved'),
+  '/reject': (args, ctx) => handleApproval(args, ctx, 'rejected'),
 };
+
+/**
+ * Answer a Copilot Studio full-mode approval request. Owner only, in a
+ * private chat: the request itself is only ever sent to the owner's DM.
+ */
+async function handleApproval(
+  args: string,
+  ctx: CommandContext,
+  decision: 'approved' | 'rejected',
+): Promise<void> {
+  if (!ctx.agent.resolveApproval) {
+    await reply(ctx, '当前 agent 没有需要确认的操作。');
+    return;
+  }
+  if (ctx.msg.chatType !== 'p2p' || !isCreator(ctx.controls, ctx.msg.senderId)) {
+    await reply(ctx, '只有 bot 所有者可以在私聊中确认操作。');
+    return;
+  }
+  const code = args.trim().split(/\s+/)[0] ?? '';
+  if (!/^\d{4}$/.test(code)) {
+    await reply(ctx, `用法：\`/${decision === 'approved' ? 'approve' : 'reject'} <4 位确认码>\``);
+    return;
+  }
+  const ok = ctx.agent.resolveApproval(code, decision);
+  await reply(
+    ctx,
+    ok
+      ? decision === 'approved'
+        ? `✓ 已批准 ${code}，正在执行。`
+        : `已拒绝 ${code}，不会执行。`
+      : `确认码 ${code} 不存在或已过期。`,
+  );
+}
 
 /**
  * Commands that can mutate credentials, lifecycle, filesystem reach, or
@@ -538,6 +574,17 @@ async function handleResume(args: string, ctx: CommandContext): Promise<void> {
   const sub = parts[0] ?? '';
   const rest = parts.slice(1).join(' ').trim();
 
+  // Copilot Studio keeps its own conversation history; the bridge has no
+  // native history to enumerate and must not list Claude/Codex sessions.
+  if (ctx.controls.profileConfig.agentKind === 'copilot-studio') {
+    await reply(
+      ctx,
+      'Copilot Studio profile 不提供历史会话列表：会话保存在 Copilot Studio 中，bridge 只接续当前进程内的会话。\n' +
+        '发 `/new` 开始新会话。',
+    );
+    return;
+  }
+
   if (sub === 'use' && rest) {
     return applyResume(rest, ctx);
   }
@@ -762,6 +809,18 @@ function selectedResumeCwd(ctx: CommandContext): string | undefined {
 function runtimeAccessStatus(
   profileConfig: ProfileConfig,
 ): { label: string; value: string } {
+  if (profileConfig.agentKind === 'copilot-studio') {
+    // Not a filesystem sandbox: a lark-cli command policy.
+    const cli = profileConfig.copilotStudio?.cli;
+    if (cli?.mode === 'full') {
+      return { label: 'lark-cli policy', value: 'full (high-risk commands need /approve)' };
+    }
+    const ops = cli?.allowedOperations;
+    return {
+      label: 'lark-cli policy',
+      value: `read-only (${ops ? `${ops.length} operations` : 'all built-in read operations'})`,
+    };
+  }
   if (profileConfig.agentKind === 'claude') {
     return {
       label: 'permission',
@@ -812,7 +871,10 @@ async function larkCliStatus(ctx: CommandContext): Promise<'app' | 'user-ready' 
 async function handleStatus(_args: string, ctx: CommandContext): Promise<void> {
   const cwd = effectiveWorkspaceCwd(ctx);
   const sess = ctx.sessions.getRaw(ctx.scope);
-  const isCodex = ctx.controls.profileConfig.agentKind === 'codex';
+  // Codex threads and Copilot Studio conversations both live in the catalog.
+  const isCodex =
+    ctx.controls.profileConfig.agentKind === 'codex' ||
+    ctx.controls.profileConfig.agentKind === 'copilot-studio';
   const catalogEntry =
     isCodex && ctx.sessionCatalog && ctx.sessionCatalogIdentity
       ? ctx.sessionCatalog.activeFor(ctx.sessionCatalogIdentity)
@@ -1127,13 +1189,11 @@ async function handleDoctor(args: string, ctx: CommandContext): Promise<void> {
   }
   doctorLastByOperator.set(rateKey, now);
 
-  const capability =
-    ctx.controls.profileConfig.agentKind === 'codex'
-      ? codexCapability(ctx.controls.profileConfig)
-      : claudeCapability(ctx.controls.profileConfig);
+  const capability = capabilityForProfile(ctx.controls.profileConfig);
   const policy = evaluateRunPolicy({
     scope: {
       source: 'im',
+      chatType: ctx.msg.chatType,
       chatId: ctx.msg.chatId,
       actorId: ctx.msg.senderId,
       ...(ctx.msg.threadId ? { threadId: ctx.msg.threadId } : {}),

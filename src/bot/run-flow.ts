@@ -123,7 +123,8 @@ export async function startRunFlow(input: StartRunFlowInput): Promise<StartRunFl
     if (catalogEntry?.agentId === 'claude') {
       sessionId = catalogEntry.sessionId;
       resumeFrom = sessionId;
-    } else if (catalogEntry?.agentId === 'codex') {
+    } else if (catalogEntry?.agentId === 'codex' || catalogEntry?.agentId === 'copilot-studio') {
+      // Codex thread id, or the Copilot Studio Direct Line conversation id.
       threadId = catalogEntry.threadId;
       resumeFrom = threadId;
     }
@@ -200,10 +201,13 @@ export function recordRunSessionEvent(input: RecordRunSessionEventInput): void {
     });
     return;
   }
-  if (input.capability.agentId === 'codex' && input.event.threadId) {
+  if (
+    (input.capability.agentId === 'codex' || input.capability.agentId === 'copilot-studio') &&
+    input.event.threadId
+  ) {
     input.sessionCatalog?.upsertActive({
       scopeId: input.scopeId,
-      agentId: 'codex',
+      agentId: input.capability.agentId,
       cwdRealpath: input.policy.cwdRealpath,
       policyFingerprint: input.policy.policyFingerprint,
       threadId: input.event.threadId,

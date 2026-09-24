@@ -1,6 +1,7 @@
 import { isComplete } from '../../config/schema';
 import { createInterface } from 'node:readline';
 import { paths } from '../../config/paths';
+import { agentKindDisplayName } from '../../config/profile-schema';
 import { loadRootConfig, readActiveProfile } from '../../config/profile-store';
 import { daemonStderrPath, daemonStdoutPath, SUPERVISOR_SERVICE_ID } from '../../daemon/paths';
 import {
@@ -605,7 +606,5 @@ async function maybeResolveProfileRuntime(
 }
 
 function agentDisplay(agentKind: ProcessEntry['agentKind']): { id: string; displayName: string } {
-  return agentKind === 'codex'
-    ? { id: 'codex', displayName: 'Codex CLI' }
-    : { id: 'claude', displayName: 'Claude Code' };
+  return { id: agentKind, displayName: agentKindDisplayName(agentKind) };
 }

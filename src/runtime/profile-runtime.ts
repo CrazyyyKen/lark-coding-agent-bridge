@@ -29,6 +29,7 @@ import {
   writeActiveProfile,
 } from '../config/profile-store';
 import {
+  agentKindDisplayName,
   createDefaultProfileConfig,
   type AgentKind,
   type CreateDefaultProfileConfigInput,
@@ -108,7 +109,10 @@ export async function resolveProfileRuntime(
   if (!profile && opts.allowBootstrap) {
     const detected = await detectInstalledAgents();
     if (detected.length === 0) {
-      throw new Error('no supported local agent found; install claude or codex first');
+      throw new Error(
+        'no supported local agent found; install claude or codex first, ' +
+          'or pass --agent copilot-studio to create a Copilot Studio profile',
+      );
     }
     if (detected.length > 1) {
       const selected = await selectDetectedAgent(detected, opts.selectAgent);
@@ -613,7 +617,7 @@ class UserCancelledError extends Error {
 }
 
 function displayAgentKind(kind: AgentKind): string {
-  return kind === 'claude' ? 'Claude Code' : 'Codex CLI';
+  return agentKindDisplayName(kind);
 }
 
 async function maybeMigrateRootPlaintextSecret(

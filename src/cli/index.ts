@@ -1,6 +1,14 @@
 import { Command } from 'commander';
 import pkg from '../../package.json';
 import { formatAgentPreflightDiagnostic, getAgentPreflightDiagnostic } from '../agent/preflight';
+import {
+  runCopilotStudioLogin,
+  runCopilotStudioMode,
+  runCopilotStudioProbe,
+  runCopilotStudioSetup,
+  runCopilotStudioShowMcpKey,
+  runCopilotStudioStatus,
+} from './commands/copilot-studio';
 import { runMigrate } from './commands/migrate';
 import { runKillCli, runPs } from './commands/ps';
 import {
@@ -41,7 +49,7 @@ program
   .option('-c, --config <path>', 'path to config file')
   .option('--profile <name>', 'profile name to run')
   .option('--web-ui', 'run the machine-wide supervisor + local web console (hosts all profiles); default is a single-profile headless run')
-  .option('--agent <kind>', 'agent kind for a new profile (claude or codex)')
+  .option('--agent <kind>', 'agent kind for a new profile (claude, codex or copilot-studio)')
   .option('--workspace <path>', 'initial working directory for first-run profile bootstrap')
   .option('--app-id <id>', 'use an existing Lark/Feishu app instead of QR app creation')
   .option('--app-secret <secret>', 'App Secret for --app-id; prefer interactive input on shared machines')
@@ -85,7 +93,7 @@ profile
 profile
   .command('create <name>')
   .description('Create a profile from QR registration or existing app credentials')
-  .option('--agent <kind>', 'agent kind (claude or codex)')
+  .option('--agent <kind>', 'agent kind (claude, codex or copilot-studio)')
   .option('--workspace <path>', 'initial working directory for this profile')
   .option('--app-id <id>', 'use an existing Lark/Feishu app instead of QR app creation')
   .option('--app-secret <secret>', 'App Secret for --app-id; prefer interactive input on shared machines')
@@ -167,7 +175,7 @@ program
   .description('Install (if needed) and start the bridge as an OS-managed daemon')
   .option('--profile <name>', 'profile name (defaults to active profile)')
   .option('--web-ui', 'run the supervisor + web console as the background service (hosts all profiles) instead of a single profile')
-  .option('--agent <kind>', 'agent kind for first-run profile bootstrap (claude or codex)')
+  .option('--agent <kind>', 'agent kind for first-run profile bootstrap (claude, codex or copilot-studio)')
   .option('--workspace <path>', 'initial working directory for first-run profile bootstrap')
   .option('--app-id <id>', 'use an existing Lark/Feishu app instead of QR app creation')
   .option('--app-secret <secret>', 'App Secret for --app-id; prefer interactive input on shared machines')
@@ -220,6 +228,78 @@ program
   .option('--web-ui', 'target the supervisor service instead of a per-profile one')
   .action(async (opts: { profile?: string; webUi?: boolean }) => {
     await runServiceUnregister({ profile: opts.profile, webUi: opts.webUi });
+  });
+
+const copilotStudio = program
+  .command('copilot-studio')
+  .description('Set up and diagnose a Copilot Studio profile (Direct Line + local MCP tools)');
+
+copilotStudio
+  .command('setup')
+  .description('Store the Direct Line secret (hidden input), create the MCP API key, and set the MCP listener')
+  .option('--profile <name>', 'copilot-studio profile (defaults to active profile)')
+  .option('--direct-line-secret-env <var>', 'read the Direct Line secret from this environment variable instead of prompting')
+  .option('--rotate-mcp-key', 'generate a new MCP API key (update the Studio connection afterwards)')
+  .option('--port <port>', 'local MCP listener port')
+  .option('--bind-host <host>', 'local MCP listener address (default 127.0.0.1)')
+  .option('--public-url <url>', 'public HTTPS URL of your tunnel / ingress (without the MCP path)')
+  .option('--base-url <url>', 'Direct Line base URL (regional endpoint)')
+  .option('--no-verify', 'skip the Direct Line token check')
+  .action(async (opts: {
+    profile?: string;
+    directLineSecretEnv?: string;
+    rotateMcpKey?: boolean;
+    port?: string;
+    bindHost?: string;
+    publicUrl?: string;
+    baseUrl?: string;
+    verify?: boolean;
+  }) => {
+    await runCopilotStudioSetup(opts);
+  });
+
+copilotStudio
+  .command('status')
+  .description('Show Copilot Studio configuration, secret and lark-cli status (no secret values)')
+  .option('--profile <name>', 'copilot-studio profile (defaults to active profile)')
+  .action(async (opts: { profile?: string }) => {
+    await runCopilotStudioStatus(opts);
+  });
+
+copilotStudio
+  .command('show-mcp-key')
+  .description('Print the MCP API key to paste into the Copilot Studio connection')
+  .option('--profile <name>', 'copilot-studio profile (defaults to active profile)')
+  .action(async (opts: { profile?: string }) => {
+    await runCopilotStudioShowMcpKey(opts);
+  });
+
+copilotStudio
+  .command('mode <mode>')
+  .description('Set what Copilot Studio may run: read-only (default) or full (writes; high-risk needs /approve)')
+  .option('--profile <name>', 'copilot-studio profile (defaults to active profile)')
+  .action(async (mode: string, opts: { profile?: string }) => {
+    await runCopilotStudioMode(mode, opts);
+  });
+
+copilotStudio
+  .command('login')
+  .description('Authorize your personal Lark identity for the profile lark-cli (browser Device Flow)')
+  .option('--profile <name>', 'copilot-studio profile (defaults to active profile)')
+  .option('--domain <list>', 'lark-cli scope domains, comma-separated (default calendar,contact,docs,im,task)')
+  .action(async (opts: { profile?: string; domain?: string }) => {
+    await runCopilotStudioLogin(opts);
+  });
+
+copilotStudio
+  .command('probe')
+  .description('Feasibility probe: one Direct Line turn with the MCP listener up, outside Lark')
+  .option('--profile <name>', 'copilot-studio profile (defaults to active profile)')
+  .option('--message <text>', 'message to send (default asks the agent to call bridge_ping)')
+  .option('--capture <file>', 'write sanitized (shape-only) protocol activities to this JSON file')
+  .option('--timeout-sec <n>', 'turn timeout in seconds')
+  .action(async (opts: { profile?: string; message?: string; capture?: string; timeoutSec?: string }) => {
+    await runCopilotStudioProbe(opts);
   });
 
 const secrets = program

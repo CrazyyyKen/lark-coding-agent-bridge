@@ -7,7 +7,7 @@ import type { AgentKind } from '../config/profile-schema';
 import { validateAppCredentials } from '../utils/feishu-auth';
 import { log } from '../core/logger';
 import { HttpError } from './http';
-import { writeNewProfile } from './onboard';
+import { parseOnboardAgentKind, writeNewProfile } from './onboard';
 
 /**
  * Turn an arbitrary app/bot name into a valid profile name (or '' if none).
@@ -152,7 +152,7 @@ export async function finishQrRegistration(
   if (s.status === 'error') throw new HttpError(400, s.error ?? '扫码创建失败');
   if (!s.app) throw new HttpError(409, '尚未完成扫码');
 
-  const agentKind: AgentKind = fv.agentKind === 'codex' ? 'codex' : 'claude';
+  const agentKind: AgentKind = parseOnboardAgentKind(fv.agentKind);
   const profile = String(fv.profile ?? '').trim() || s.suggestedProfile || agentKind;
   const created = await writeNewProfile(
     { profile, agentKind, appId: s.app.appId, appSecret: s.app.appSecret, tenant: s.app.tenant },

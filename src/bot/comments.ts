@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import type { CommentEvent, LarkChannel } from '@larksuite/channel';
-import { claudeCapability, codexCapability } from '../agent/capability';
+import { capabilityForProfile } from '../agent/capability';
 import type { AgentAdapter, AgentEvent } from '../agent/types';
 import { getAgentStopGraceMs } from '../config/schema';
 import type { Controls } from '../commands';
@@ -186,10 +186,7 @@ export async function handleCommentMention(deps: CommentDeps): Promise<void> {
     : false;
 
   try {
-    const capability =
-      controls.profileConfig.agentKind === 'codex'
-        ? codexCapability(controls.profileConfig)
-        : claudeCapability(controls.profileConfig);
+    const capability = capabilityForProfile(controls.profileConfig);
     const runTimeoutMs = commentRunTimeoutMs(sessions, runScopeId);
     const threadTimeoutMs = commentRunTimeoutMs(sessions, commentThreadScopeId);
     const commentTimeoutMs = runTimeoutMs !== undefined ? runTimeoutMs : threadTimeoutMs;
@@ -221,6 +218,15 @@ export async function handleCommentMention(deps: CommentDeps): Promise<void> {
         source: 'comment',
         code: policy.rejectReason.code,
       });
+      // An agent that cannot take comment runs at all (Copilot Studio MVP)
+      // should say so instead of leaving the @-mention unanswered.
+      if (policy.rejectReason.code === 'source-not-supported') {
+        await postCommentReply(channel, target, evt, policy.rejectReason.userVisible, {
+          isWhole: ctx.isWhole,
+        }).catch((err) => {
+          log.fail('comment', err, { step: 'postUnsupportedSourceReply' });
+        });
+      }
       return;
     }
     const commentExpiresAt = typeof commentTimeoutMs === 'number' ? policy.expiresAt : undefined;

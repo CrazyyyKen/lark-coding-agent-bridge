@@ -18,6 +18,8 @@ import {
 
 export interface ScopeContext {
   source: 'im' | 'card' | 'comment' | 'meeting';
+  /** Lark chat type of the triggering chat (`p2p`, `group`, ...), when known. */
+  chatType?: string;
   chatId?: string;
   threadId?: string;
   actorId: string;
@@ -76,6 +78,8 @@ export interface RunPolicyReject {
   rejectReason: {
     code:
       | 'access-denied'
+      | 'source-not-supported'
+      | 'owner-dm-required'
       | 'folder-allowlist-unverified'
       | 'required-attachment-rejected';
     userVisible: string;
@@ -89,6 +93,26 @@ const DEFAULT_TTL_MS = 5 * 60 * 1000;
 export function evaluateRunPolicy(input: RunPolicyInput): RunPolicyResult {
   if (!input.access.ok) {
     return reject('access-denied', '当前用户无权发起运行。');
+  }
+
+  if (!input.capability.sources.includes(input.scope.source)) {
+    return reject(
+      'source-not-supported',
+      `当前 agent（${input.capability.agentId}）不支持从这个入口发起运行，请在与 bot 的私聊中直接发消息。`,
+    );
+  }
+
+  // Owner-only DMs: the Copilot Studio MVP hands a short-lived execution
+  // capability to the model, so it must not be reachable from groups or by
+  // other users (see docs/copilot-studio.md, "Correlation and authorization").
+  if (
+    input.capability.ownerDmOnly &&
+    (input.scope.chatType !== 'p2p' || input.access.reason !== 'owner')
+  ) {
+    return reject(
+      'owner-dm-required',
+      `当前 agent（${input.capability.agentId}）只接受 bot 所有者在私聊中发起的请求。`,
+    );
   }
 
   if (input.scope.resourceBindings?.some((binding) => binding.kind === 'folder' && !binding.verified)) {

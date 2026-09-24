@@ -1,0 +1,334 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lark Copilot Bridge</title>
+<meta name="description" content="How the single-user Lark ↔ Copilot Studio bridge works: components, connections, message flow and data exposure.">
+<style>
+  :root {
+    --bg: #f7f7f5;
+    --card: #ffffff;
+    --fg: #1d1d1f;
+    --muted: #5f6368;
+    --border: #dcdcd7;
+    --lark: #1f6feb;
+    --lark-bg: #eaf2ff;
+    --laptop: #3f4a55;
+    --laptop-bg: #f1f3f5;
+    --ms: #7b3fe4;
+    --ms-bg: #f3edff;
+    --ngrok: #c2570c;
+    --ngrok-bg: #fff1e6;
+    --check: #1a7f37;
+    --warn: #b35900;
+    --box: #ffffff;
+    --shadow: 0 1px 2px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.04);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #141517;
+      --card: #1c1d20;
+      --fg: #ececec;
+      --muted: #a4a8ae;
+      --border: #34363b;
+      --lark: #6aa6ff;
+      --lark-bg: #16233a;
+      --laptop: #c9d1d9;
+      --laptop-bg: #202328;
+      --ms: #b18cff;
+      --ms-bg: #251c38;
+      --ngrok: #ff9a57;
+      --ngrok-bg: #33220f;
+      --check: #56d364;
+      --warn: #f0a04b;
+      --box: #25272b;
+      --shadow: none;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #141517; --card: #1c1d20; --fg: #ececec; --muted: #a4a8ae; --border: #34363b;
+    --lark: #6aa6ff; --lark-bg: #16233a; --laptop: #c9d1d9; --laptop-bg: #202328;
+    --ms: #b18cff; --ms-bg: #251c38; --ngrok: #ff9a57; --ngrok-bg: #33220f;
+    --check: #56d364; --warn: #f0a04b; --box: #25272b; --shadow: none;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", Roboto, sans-serif;
+  }
+  main { max-width: 1080px; margin: 0 auto; padding: 32px 16px 56px; }
+  header h1 { font-size: 28px; line-height: 1.2; margin: 0 0 6px; letter-spacing: -.01em; }
+  header p { margin: 0; color: var(--muted); max-width: 760px; }
+  .pill {
+    display: inline-block; font-size: 12px; font-weight: 600; padding: 2px 10px; border-radius: 999px;
+    border: 1px solid var(--border); color: var(--muted); margin-bottom: 12px;
+  }
+  section { margin-top: 36px; }
+  h2 { font-size: 19px; margin: 0 0 14px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow); }
+  .diagram { padding: 12px; overflow: hidden; }
+  .diagram svg { display: block; width: 100%; height: auto; }
+  svg text { fill: var(--fg); font-family: inherit; }
+  svg .t-title { font-size: 15px; font-weight: 700; }
+  svg .t-box { font-size: 13.5px; font-weight: 650; }
+  svg .t-sub { font-size: 11.5px; fill: var(--muted); }
+  svg .zone { stroke-width: 1.5; }
+  svg .z-lark { fill: var(--lark-bg); stroke: var(--lark); }
+  svg .z-laptop { fill: var(--laptop-bg); stroke: var(--laptop); }
+  svg .z-ms { fill: var(--ms-bg); stroke: var(--ms); }
+  svg .z-ngrok { fill: var(--ngrok-bg); stroke: var(--ngrok); }
+  svg .box { fill: var(--box); stroke: var(--border); stroke-width: 1.2; }
+  svg .bridge { fill: none; stroke: var(--laptop); stroke-width: 1.2; stroke-dasharray: 5 4; }
+  svg .flow { fill: none; stroke-width: 2.2; }
+  svg .f-lark { stroke: var(--lark); }
+  svg .f-ms { stroke: var(--ms); }
+  svg .f-ngrok { stroke: var(--ngrok); }
+  svg .f-int { stroke: var(--muted); stroke-width: 1.6; }
+  svg .f-dash { stroke-dasharray: 4 4; }
+  svg .badge circle { stroke-width: 2; fill: var(--card); }
+  svg .badge text { font-size: 12px; font-weight: 800; text-anchor: middle; dominant-baseline: central; }
+  .legend { display: flex; flex-wrap: wrap; gap: 10px 22px; padding: 4px 8px 10px; color: var(--muted); font-size: 13px; }
+  .legend b { color: var(--fg); }
+  .conn { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; }
+  .conn .card { padding: 14px 16px; }
+  .conn h3 { margin: 0 0 4px; font-size: 15px; display: flex; align-items: center; gap: 8px; }
+  .conn p { margin: 0; color: var(--muted); font-size: 13.5px; }
+  .letter {
+    display: inline-flex; width: 24px; height: 24px; border-radius: 50%; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 800; border: 2px solid currentColor; flex: none;
+  }
+  .c-lark { color: var(--lark); } .c-ms { color: var(--ms); } .c-ngrok { color: var(--ngrok); }
+  ol.steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+  ol.steps li { display: grid; grid-template-columns: 34px 1fr; gap: 12px; align-items: start; padding: 12px 16px; }
+  ol.steps .n {
+    width: 30px; height: 30px; border-radius: 50%; background: var(--fg); color: var(--bg);
+    display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px;
+  }
+  ol.steps b { display: block; margin-bottom: 2px; }
+  ol.steps span { color: var(--muted); font-size: 14px; }
+  .checks { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+  .checks .card { padding: 14px 16px; }
+  .checks h3 { margin: 0 0 4px; font-size: 14.5px; color: var(--check); }
+  .checks p { margin: 0; font-size: 13.5px; color: var(--muted); }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 11px 14px; border-top: 1px solid var(--border); vertical-align: top; }
+  thead th { border-top: none; color: var(--muted); font-weight: 600; font-size: 12.5px; text-transform: uppercase; letter-spacing: .04em; }
+  td:first-child { font-weight: 650; white-space: nowrap; }
+  .table-wrap { overflow-x: auto; }
+  .note { padding: 14px 16px; border-left: 4px solid var(--warn); }
+  .note p { margin: 0; font-size: 14px; }
+  .note p + p { margin-top: 6px; }
+  ul.life { margin: 0; padding: 14px 16px 14px 34px; }
+  ul.life li { margin: 4px 0; }
+  footer { margin-top: 40px; color: var(--muted); font-size: 12.5px; }
+  @media (max-width: 640px) {
+    header h1 { font-size: 23px; }
+    td:first-child { white-space: normal; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <span class="pill">Single-user pilot · current setup</span>
+    <h1>Lark ↔ Copilot Studio bridge</h1>
+    <p>You chat with a Lark bot. A published Microsoft Copilot Studio agent does the thinking. When it needs Lark data, it asks the bridge on the owner's laptop to run <code>lark-cli</code> with the owner's own Lark login.</p>
+  </header>
+
+  <section>
+    <h2>Architecture</h2>
+    <div class="card diagram">
+      <svg viewBox="0 0 1000 600" role="img" aria-labelledby="dg-title dg-desc">
+        <title id="dg-title">Architecture diagram</title>
+        <desc id="dg-desc">Lark cloud on the left, the owner's laptop in the middle running the bridge and ngrok agent, Microsoft Copilot Studio on the top right and the ngrok cloud on the bottom right. Connection A links the Lark bot and the bridge over WebSocket; B links the bridge to Direct Line; C carries MCP tool calls from Copilot Studio through ngrok to the laptop; D is lark-cli calling the Lark API.</desc>
+        <defs>
+          <marker id="ah-lark" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--lark)"/></marker>
+          <marker id="ah-ms" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--ms)"/></marker>
+          <marker id="ah-ngrok" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--ngrok)"/></marker>
+          <marker id="ah-int" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/></marker>
+        </defs>
+
+        <!-- Zones -->
+        <rect class="zone z-lark" x="10" y="10" width="250" height="580" rx="16"/>
+        <text class="t-title" x="30" y="40">Lark cloud</text>
+        <rect class="zone z-laptop" x="290" y="10" width="400" height="580" rx="16"/>
+        <text class="t-title" x="310" y="40">Owner's laptop</text>
+        <rect class="zone z-ms" x="720" y="10" width="270" height="320" rx="16"/>
+        <text class="t-title" x="740" y="40">Microsoft cloud</text>
+        <rect class="zone z-ngrok" x="720" y="360" width="270" height="180" rx="16"/>
+        <text class="t-title" x="740" y="390">ngrok cloud</text>
+
+        <!-- Lark boxes -->
+        <rect class="box" x="30" y="60" width="210" height="56" rx="10"/>
+        <text class="t-box" x="46" y="84">Owner</text>
+        <text class="t-sub" x="46" y="103">private chat in Lark</text>
+        <rect class="box" x="30" y="150" width="210" height="56" rx="10"/>
+        <text class="t-box" x="46" y="174">Lark bot app</text>
+        <text class="t-sub" x="46" y="193">e.g. "Howie"</text>
+        <rect class="box" x="30" y="470" width="210" height="72" rx="10"/>
+        <text class="t-box" x="46" y="494">Lark Open API</text>
+        <text class="t-sub" x="46" y="513">calendar · messages · docs</text>
+        <text class="t-sub" x="46" y="530">tasks · wiki · drive …</text>
+        <path class="flow f-lark" d="M135,116 L135,150" marker-start="url(#ah-lark)" marker-end="url(#ah-lark)"/>
+
+        <!-- Bridge -->
+        <rect class="bridge" x="310" y="52" width="360" height="400" rx="12"/>
+        <text class="t-sub" x="326" y="70">lark-channel-bridge (run --profile copilot)</text>
+        <rect class="box" x="330" y="82" width="150" height="46" rx="9"/>
+        <text class="t-box" x="344" y="101">Lark channel</text>
+        <text class="t-sub" x="344" y="118">receive · reply</text>
+        <rect class="box" x="500" y="82" width="150" height="46" rx="9"/>
+        <text class="t-box" x="514" y="101">Access gate</text>
+        <text class="t-sub" x="514" y="118">owner + DM only</text>
+        <rect class="box" x="330" y="150" width="320" height="52" rx="9"/>
+        <text class="t-box" x="344" y="171">Copilot Studio adapter</text>
+        <text class="t-sub" x="344" y="189">Direct Line · per-message token · turn tracking</text>
+        <rect class="box" x="330" y="225" width="320" height="100" rx="9"/>
+        <text class="t-box" x="344" y="247">MCP server · 127.0.0.1:47821/mcp</text>
+        <text class="t-sub" x="344" y="268">1 API key correct?</text>
+        <text class="t-sub" x="344" y="285">2 execution token live, for this message?</text>
+        <text class="t-sub" x="344" y="302">3 command allowed by the rules?</text>
+        <text class="t-sub" x="344" y="319">4 high-risk → ask owner to /approve</text>
+        <rect class="box" x="330" y="350" width="150" height="72" rx="9"/>
+        <text class="t-box" x="344" y="372">lark-cli.exe</text>
+        <text class="t-sub" x="344" y="390">no shell</text>
+        <text class="t-sub" x="344" y="407">owner's Lark login</text>
+        <rect class="box" x="500" y="350" width="150" height="72" rx="9"/>
+        <text class="t-box" x="514" y="372">Encrypted secrets</text>
+        <text class="t-sub" x="514" y="390">Direct Line secret</text>
+        <text class="t-sub" x="514" y="407">MCP key · app secret</text>
+
+        <!-- internal arrows -->
+        <path class="flow f-int" d="M480,105 L498,105" marker-end="url(#ah-int)"/>
+        <path class="flow f-int" d="M575,128 L575,148" marker-end="url(#ah-int)"/>
+        <path class="flow f-int f-dash" d="M445,202 L445,223" marker-start="url(#ah-int)" marker-end="url(#ah-int)"/>
+        <text class="t-sub" x="454" y="217">shared token registry</text>
+        <path class="flow f-int" d="M405,325 L405,348" marker-end="url(#ah-int)"/>
+
+        <!-- ngrok agent -->
+        <rect class="box" x="310" y="478" width="360" height="56" rx="10"/>
+        <text class="t-box" x="326" y="501">ngrok agent</text>
+        <text class="t-sub" x="326" y="520">forwards the public URL to 127.0.0.1:47821</text>
+
+        <!-- Microsoft -->
+        <rect class="box" x="740" y="60" width="230" height="52" rx="10"/>
+        <text class="t-box" x="756" y="82">Direct Line</text>
+        <text class="t-sub" x="756" y="100">chat channel for custom apps</text>
+        <rect class="box" x="740" y="140" width="230" height="120" rx="10"/>
+        <text class="t-box" x="756" y="163">Copilot Studio agent</text>
+        <text class="t-sub" x="756" y="184">model (e.g. Claude Opus 5)</text>
+        <text class="t-sub" x="756" y="202">agent Instructions</text>
+        <text class="t-sub" x="756" y="220">MCP tool "lark-bridge"</text>
+        <text class="t-sub" x="756" y="238">(Shared account connection)</text>
+        <path class="flow f-ms" d="M855,112 L855,138" marker-start="url(#ah-ms)" marker-end="url(#ah-ms)"/>
+
+        <!-- ngrok cloud -->
+        <rect class="box" x="740" y="410" width="230" height="60" rx="10"/>
+        <text class="t-box" x="756" y="433">Public HTTPS URL</text>
+        <text class="t-sub" x="756" y="452">https://…ngrok-free.dev/mcp</text>
+
+        <!-- A: bot <-> Lark channel -->
+        <path class="flow f-lark" d="M240,178 L285,178 L285,105 L328,105" marker-start="url(#ah-lark)" marker-end="url(#ah-lark)"/>
+        <g class="badge"><circle cx="285" cy="142" r="12" stroke="var(--lark)"/><text x="285" y="142" fill="var(--lark)">A</text></g>
+
+        <!-- B: adapter -> Direct Line -->
+        <path class="flow f-ms" d="M650,176 L702,176 L702,86 L738,86" marker-start="url(#ah-ms)" marker-end="url(#ah-ms)"/>
+        <g class="badge"><circle cx="702" cy="131" r="12" stroke="var(--ms)"/><text x="702" y="131" fill="var(--ms)">B</text></g>
+
+        <!-- C: Studio -> ngrok cloud -> ngrok agent -> MCP -->
+        <path class="flow f-ngrok" d="M855,260 L855,408" marker-end="url(#ah-ngrok)"/>
+        <g class="badge"><circle cx="855" cy="340" r="12" stroke="var(--ngrok)"/><text x="855" y="340" fill="var(--ngrok)">C</text></g>
+        <path class="flow f-ngrok" d="M740,440 L706,440 L706,506 L672,506" marker-end="url(#ah-ngrok)"/>
+        <path class="flow f-ngrok" d="M490,478 L490,327" marker-end="url(#ah-ngrok)"/>
+
+        <!-- D: lark-cli -> Lark API -->
+        <path class="flow f-lark" d="M330,386 L285,386 L285,506 L242,506" marker-end="url(#ah-lark)"/>
+        <g class="badge"><circle cx="285" cy="446" r="12" stroke="var(--lark)"/><text x="285" y="446" fill="var(--lark)">D</text></g>
+      </svg>
+      <div class="legend">
+        <span><b style="color:var(--lark)">Blue</b> Lark traffic</span>
+        <span><b style="color:var(--ms)">Purple</b> Microsoft traffic</span>
+        <span><b style="color:var(--ngrok)">Orange</b> tool calls through the tunnel</span>
+        <span><b>Dashed</b> in-process</span>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>The four connections</h2>
+    <div class="conn">
+      <div class="card"><h3><span class="letter c-lark">A</span> Bridge ⇄ Lark</h3><p>An outbound WebSocket from the laptop. It uses the bot app's App ID and secret. No inbound port is needed.</p></div>
+      <div class="card"><h3><span class="letter c-ms">B</span> Bridge → Copilot Studio</h3><p>Outbound HTTPS to Direct Line. The Studio "web channel security" secret is exchanged for a 30-minute conversation token.</p></div>
+      <div class="card"><h3><span class="letter c-ngrok">C</span> Copilot Studio → laptop</h3><p>The only <b>inbound</b> connection, so it's the only reason for the tunnel. It carries MCP tool calls and needs the MCP API key plus a per-message execution token.</p></div>
+      <div class="card"><h3><span class="letter c-lark">D</span> lark-cli → Lark API</h3><p>Outbound HTTPS using the owner's personal Lark login for this profile.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>One message, start to finish</h2>
+    <ol class="steps">
+      <li class="card"><div class="n">1</div><div><b>Owner sends a DM</b><span>e.g. "What's on my calendar today?" Lark pushes it to the bridge over connection A.</span></div></li>
+      <li class="card"><div class="n">2</div><div><b>Access check</b><span>Only the bot's owner in a private chat gets through. Groups, other people, doc comments and meetings are refused before anything reaches Microsoft.</span></div></li>
+      <li class="card"><div class="n">3</div><div><b>Wrap and sign</b><span>The bridge adds Lark context (chat, sender, bot name) and mints a random execution token that works only for this one message.</span></div></li>
+      <li class="card"><div class="n">4</div><div><b>Send to Copilot Studio</b><span>The message is posted into the owner's Direct Line conversation (connection B). Follow-ups reuse it, and <code>/new</code> starts a fresh one.</span></div></li>
+      <li class="card"><div class="n">5</div><div><b>The agent decides</b><span>The model reads its Instructions and chooses a tool, e.g. <code>run_lark_cli ["calendar","+agenda"]</code> with the execution token.</span></div></li>
+      <li class="card"><div class="n">6</div><div><b>Tool call reaches the laptop</b><span>Through the ngrok URL (connection C). The MCP server checks the API key, then the token, then the command rules. High-risk commands wait for the owner's <code>/approve</code> in Lark.</span></div></li>
+      <li class="card"><div class="n">7</div><div><b>lark-cli runs</b><span>It runs directly, with no shell, a minimal environment and the owner's login, and calls the Lark API (connection D). The JSON result goes back to Studio.</span></div></li>
+      <li class="card"><div class="n">8</div><div><b>The agent answers</b><span>The model writes the reply, and Studio sends a <code>turn.complete</code> signal.</span></div></li>
+      <li class="card"><div class="n">9</div><div><b>Reply in Lark</b><span>The bridge collects the reply, <b>revokes the token</b> so any late tool call is refused, and posts the answer in the DM. Typical time: 5–10 s, or a minute or more for multi-step tasks.</span></div></li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>Checks on every tool call</h2>
+    <div class="checks">
+      <div class="card"><h3>✓ Right caller</h3><p>The request must carry the MCP API key. Browser requests and any path other than <code>/mcp</code> and <code>/healthz</code> are refused.</p></div>
+      <div class="card"><h3>✓ Right message</h3><p>The execution token must be live and belong to the message being answered. It's revoked on completion, stop or timeout.</p></div>
+      <div class="card"><h3>✓ Allowed command</h3><p>Read-only mode allows 9 read commands. Full mode allows all <code>lark-cli</code> commands except <code>auth</code>, <code>config</code>, <code>profile</code>, <code>update</code> and <code>api</code>, identity switching, <code>--jq</code> and paths outside the working folder.</p></div>
+      <div class="card"><h3>✓ Owner approval</h3><p>Deletes, permission changes and anything <code>lark-cli</code> marks high-risk wait for <code>/approve &lt;code&gt;</code> from the owner in Lark. Nothing runs twice if Studio retries.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Who sees what</h2>
+    <div class="card table-wrap">
+      <table>
+        <thead><tr><th>Where</th><th>What's there</th></tr></thead>
+        <tbody>
+          <tr><td>Lark</td><td>The owner's messages and the bot's replies.</td></tr>
+          <tr><td>Microsoft (Copilot Studio)</td><td>Each message the bridge sends (text, Lark context, execution token), every tool result (the owner's Lark data) and the replies. It's kept in the agent's conversation transcripts.</td></tr>
+          <tr><td>ngrok</td><td>All tool traffic: the API key, commands and returned Lark data.</td></tr>
+          <tr><td>Owner's laptop</td><td>Encrypted secrets, the owner's <code>lark-cli</code> login, and logs (events, timings, a short preview of incoming messages).</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>Lifecycle</h2>
+    <div class="card">
+      <ul class="life">
+        <li><b>Start</b>: decrypt secrets, check the <code>lark-cli</code> login, open the MCP listener on port 47821, connect to Lark.</li>
+        <li><b>Running</b>: one message at a time. Stop, <code>/new</code> and timeouts cancel the turn and revoke its token.</li>
+        <li><b>Stop</b>: all tokens are revoked and the listener closes, so Studio's tool calls fail until the bot is back.</li>
+        <li><b>Restart</b>: the next message starts a new Copilot Studio conversation, and the bot says so.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <h2>Limits of this setup</h2>
+    <div class="card note">
+      <p><b>Single user.</b> Every command runs with the owner's Lark login, so only the owner can use the bot. Colleagues are refused by design.</p>
+      <p><b>Laptop-bound.</b> It works only while the owner's laptop, the bridge and ngrok are all running.</p>
+      <p><b>Cloud data flow.</b> Lark data returned by tools is sent to Copilot Studio in Microsoft's cloud, and passes through ngrok.</p>
+    </div>
+  </section>
+
+  <footer>lark-channel-bridge · Copilot Studio agent kind · setup guide: docs/copilot-studio.md</footer>
+</main>
+</body>
+</html>

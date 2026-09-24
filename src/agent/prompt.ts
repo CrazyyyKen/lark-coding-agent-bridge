@@ -15,6 +15,11 @@ export interface BridgePromptContext {
   senderType?: 'user' | 'bot';
   /** The bridge bot's own open_id — "this id is you" for self-identification. */
   botOpenId?: string;
+  /**
+   * The bot's Lark display name. Sent to remote agents (Copilot Studio), which
+   * get no bridge system prompt, so they can introduce themselves correctly.
+   */
+  botName?: string;
   /** Accounts @-mentioned in the triggering message(s), deduped across the batch. */
   mentions?: BridgePromptMention[];
   threadId?: string;

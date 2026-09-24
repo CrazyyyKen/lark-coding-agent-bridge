@@ -43,9 +43,24 @@ const CODEX_MODELS: ModelOption[] = [
   { value: 'o3', label: 'o3' },
 ];
 
+/**
+ * Copilot Studio picks its model in the Studio editor; Direct Line has no way
+ * to enforce a bridge-side choice, so the only option is "Studio decides".
+ */
+const COPILOT_STUDIO_MODELS: ModelOption[] = [
+  { value: DEFAULT_MODEL, label: '由 Copilot Studio 中的智能体设置决定' },
+];
+
 /** The model picker options for a profile's agent kind. */
 export function supportedModels(agentKind: AgentKind): ModelOption[] {
-  return agentKind === 'codex' ? CODEX_MODELS : CLAUDE_MODELS;
+  switch (agentKind) {
+    case 'codex':
+      return CODEX_MODELS;
+    case 'copilot-studio':
+      return COPILOT_STUDIO_MODELS;
+    case 'claude':
+      return CLAUDE_MODELS;
+  }
 }
 
 /** True when the selection means "use the agent default" (no `--model`). */

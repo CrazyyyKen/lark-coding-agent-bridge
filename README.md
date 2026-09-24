@@ -104,15 +104,29 @@ lark-channel-bridge restart --profile codex
 lark-channel-bridge status --profile codex
 ```
 
+### Copilot Studio (preview)
+
+A profile can also use a **published Microsoft Copilot Studio agent** instead of a local coding agent. Lark stays the chat interface; Studio does the reasoning over Direct Line and calls back into the bridge over MCP. The bridge then runs a small set of **read-only** `lark-cli` commands on this machine, as the profile's own Lark identity. Runs are accepted only from the bot owner in a private chat.
+
+```bash
+lark-channel-bridge profile create copilot --agent copilot-studio --app-id cli_xxx
+lark-channel-bridge copilot-studio setup --profile copilot   # hidden input for the Direct Line secret
+lark-channel-bridge copilot-studio probe --profile copilot   # one test turn outside Lark
+lark-channel-bridge run --profile copilot
+```
+
+You provide your own HTTPS tunnel or ingress to the local MCP listener; the bridge never opens one. See [docs/copilot-studio.md](docs/copilot-studio.md) for the Studio setup, the agent instructions to paste, the security model and current limitations.
+
 ## Commands
 
 ### Host CLI
 
 ```text
-lark-channel-bridge run [--profile <name>] [--agent claude|codex] [--workspace <path>] [-c <config>]
+lark-channel-bridge run [--profile <name>] [--agent claude|codex|copilot-studio] [--workspace <path>] [-c <config>]
 lark-channel-bridge migrate [--profile <name>] [--agent claude|codex]
 lark-channel-bridge ps
 lark-channel-bridge kill <id|#>
+lark-channel-bridge copilot-studio setup|status|show-mcp-key|probe [--profile <name>]
 lark-channel-bridge --help
 ```
 

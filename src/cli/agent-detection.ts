@@ -2,10 +2,15 @@ import { constants } from 'node:fs';
 import { access } from 'node:fs/promises';
 import { delimiter, extname, isAbsolute, join } from 'node:path';
 
-export type AgentKind = 'claude' | 'codex';
+/**
+ * Agents that run as a local binary and can be auto-detected on PATH. Kept
+ * distinct from the profile-level AgentKind: remote agents (Copilot Studio)
+ * are never "detected", they are configured explicitly.
+ */
+export type LocalAgentKind = 'claude' | 'codex';
 
 export interface DetectedAgent {
-  kind: AgentKind;
+  kind: LocalAgentKind;
   binaryPath: string;
 }
 
@@ -45,7 +50,7 @@ function pathExts(): string[] {
 }
 
 export async function detectInstalledAgents(): Promise<DetectedAgent[]> {
-  const candidates: Array<{ kind: AgentKind; command: string }> = [
+  const candidates: Array<{ kind: LocalAgentKind; command: string }> = [
     { kind: 'claude', command: process.env.LARK_CHANNEL_CLAUDE_BIN ?? 'claude' },
     { kind: 'codex', command: process.env.LARK_CHANNEL_CODEX_BIN ?? 'codex' },
   ];

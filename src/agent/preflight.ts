@@ -1,8 +1,14 @@
 import { spawnProcess } from '../platform/spawn';
 
 export type LocalAgentId = 'claude' | 'codex';
+/** Every agent a diagnostic can be about: local binaries plus remote agents. */
+export type AgentDiagnosticId = LocalAgentId | 'copilot-studio';
 
 export type AgentPreflightErrorCode =
+  | 'agent-remote-config-invalid'
+  | 'agent-remote-secret-unavailable'
+  | 'agent-remote-service-failed'
+  | 'agent-tool-cli-not-found'
   | 'agent-binary-not-found'
   | 'agent-binary-not-executable'
   | 'agent-binary-resolve-failed'
@@ -15,7 +21,7 @@ export type AgentPreflightErrorCode =
 
 export interface AgentPreflightDiagnostic {
   code: AgentPreflightErrorCode;
-  agentId: LocalAgentId;
+  agentId: AgentDiagnosticId;
   agentName: string;
   command: string;
   binaryPath?: string;
@@ -30,6 +36,8 @@ export interface AgentPreflightDiagnostic {
   field?: string;
   expected?: string | number;
   actual?: string | number;
+  /** Sanitized, secret-free explanation (remote agent diagnostics). */
+  detail?: string;
 }
 
 export type AgentAvailability =
@@ -196,6 +204,35 @@ export function formatAgentPreflightError(err: AgentPreflightError): string {
 export function formatAgentPreflightDiagnostic(diagnostic: AgentPreflightDiagnostic): string {
   const command = commandForDisplay(diagnostic);
   switch (diagnostic.code) {
+    case 'agent-remote-config-invalid':
+      return [
+        `✗ ${diagnostic.agentName} 配置不完整或无效：${diagnostic.detail ?? '未知原因'}`,
+        '',
+        '运行 `lark-channel-bridge copilot-studio setup --profile <name>` 补全配置，',
+        '或用 `lark-channel-bridge copilot-studio status --profile <name>` 查看当前状态。',
+        `错误码：${diagnostic.code}`,
+      ].join('\n');
+    case 'agent-remote-secret-unavailable':
+      return [
+        `✗ ${diagnostic.agentName} 的密钥无法读取：${diagnostic.detail ?? '未知原因'}`,
+        '',
+        '运行 `lark-channel-bridge copilot-studio setup --profile <name>` 在本机重新录入（不要把密钥发到聊天里）。',
+        `错误码：${diagnostic.code}`,
+      ].join('\n');
+    case 'agent-remote-service-failed':
+      return [
+        `✗ ${diagnostic.agentName} 的本地 MCP 服务启动失败：${diagnostic.detail ?? '未知原因'}`,
+        '',
+        '检查 copilotStudio.mcp.port 是否被占用，或换一个端口后重新启动 profile。',
+        `错误码：${diagnostic.code}`,
+      ].join('\n');
+    case 'agent-tool-cli-not-found':
+      return [
+        `✗ ${diagnostic.agentName} 需要的本地 lark-cli 不可用：${diagnostic.detail ?? '未找到可执行文件'}`,
+        '',
+        '请安装 lark-cli，或在 copilotStudio.cli.binaryPath 配置原生 lark-cli 可执行文件的绝对路径。',
+        `错误码：${diagnostic.code}`,
+      ].join('\n');
     case 'agent-binary-not-found':
       return [
         `✗ 未找到本地 ${diagnostic.agentName}。`,
@@ -279,7 +316,7 @@ export function isAgentPreflightDiagnostic(input: unknown): input is AgentPrefli
   return (
     typeof raw.code === 'string' &&
     raw.code.startsWith('agent-') &&
-    (raw.agentId === 'claude' || raw.agentId === 'codex') &&
+    (raw.agentId === 'claude' || raw.agentId === 'codex' || raw.agentId === 'copilot-studio') &&
     typeof raw.agentName === 'string' &&
     typeof raw.command === 'string'
   );

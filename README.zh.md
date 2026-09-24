@@ -104,15 +104,29 @@ lark-channel-bridge restart --profile codex
 lark-channel-bridge status --profile codex
 ```
 
+### Copilot Studio（预览）
+
+profile 也可以接一个**已发布的 Microsoft Copilot Studio 智能体**，代替本地编码 agent。飞书仍然是聊天入口；Studio 通过 Direct Line 负责推理，并通过 MCP 回调 bridge。bridge 随后在本机以该 profile 自己的飞书身份执行少量**只读** `lark-cli` 命令。只接受 bot 所有者在私聊中发起的请求。
+
+```bash
+lark-channel-bridge profile create copilot --agent copilot-studio --app-id cli_xxx
+lark-channel-bridge copilot-studio setup --profile copilot   # 以隐藏输入录入 Direct Line secret
+lark-channel-bridge copilot-studio probe --profile copilot   # 在飞书之外先跑一轮测试
+lark-channel-bridge run --profile copilot
+```
+
+指向本地 MCP 监听的 HTTPS 隧道或入口需要你自己提供，bridge 不会替你开启。Studio 端配置、要粘贴的智能体指令、安全模型和当前限制见 [docs/copilot-studio.md](docs/copilot-studio.md)。
+
 ## 命令速查
 
 ### 宿主 CLI
 
 ```text
-lark-channel-bridge run [--profile <name>] [--agent claude|codex] [--workspace <path>] [-c <config>]
+lark-channel-bridge run [--profile <name>] [--agent claude|codex|copilot-studio] [--workspace <path>] [-c <config>]
 lark-channel-bridge migrate [--profile <name>] [--agent claude|codex]
 lark-channel-bridge ps
 lark-channel-bridge kill <id|#>
+lark-channel-bridge copilot-studio setup|status|show-mcp-key|probe [--profile <name>]
 lark-channel-bridge --help
 ```
 
