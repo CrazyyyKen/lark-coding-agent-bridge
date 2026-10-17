@@ -1,0 +1,51 @@
+# System-level template unit: one bridge instance per Linux user.
+#
+#   instance name (%i) = Linux user = home under /srv/lark/%i
+#   e.g. systemctl enable --now lark-bridge@exec-teong
+#
+# Each instance holds exactly one profile (its own Lark app), so the bridge
+# runs the instance's active profile. See deploy/README.md for setup.
+#
+# Prefer this over `lark-channel-bridge start` on servers: `start` installs a
+# per-user unit (systemctl --user), which needs lingering and a user session
+# for every service account.
+
+[Unit]
+Description=Lark Channel Bridge instance %i
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=%i
+Group=%i
+WorkingDirectory=/srv/lark/%i
+Environment=HOME=/srv/lark/%i
+Environment=LARK_CHANNEL_HOME=/srv/lark/%i/.lark-channel
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+# Claude Code is updated by the admin (Ansible), never by a running bot.
+Environment=DISABLE_AUTOUPDATER=1
+# Optional, 0600: ANTHROPIC_API_KEY for shared bots, or the owner's Claude
+# token for personal assistants. Values here override the lines above.
+EnvironmentFile=-/srv/lark/%i/.lark-channel/service.env
+ExecStart=/usr/bin/env lark-channel-bridge run
+Restart=always
+RestartSec=5
+
+# Hardening: the instance can write only inside its own home. Other
+# instances' homes are 0700 and owned by other users, so they stay
+# unreadable even if the agent is manipulated.
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ReadWritePaths=/srv/lark/%i
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+
+[Install]
+WantedBy=multi-user.target

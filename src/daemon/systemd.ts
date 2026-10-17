@@ -42,6 +42,11 @@ export interface UnitInputs {
  * the service when the user logs in. Note: systemd user services only
  * survive logout if `loginctl enable-linger <user>` is set — we mention
  * this in the user-facing success message.
+ *
+ * `EnvironmentFile=-<channelHome>/service.env` (the `-` makes it optional)
+ * lets an operator hand the bridge — and the agent it spawns — extra env such
+ * as `ANTHROPIC_API_KEY` without editing this generated unit, which is
+ * rewritten on every `start`. Keep that file 0600.
  */
 export function buildUnit(inputs: UnitInputs): string {
   const escape = (s: string): string => s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
@@ -62,6 +67,7 @@ StandardOutput=append:${daemonStdoutPath(inputs.profile)}
 StandardError=append:${daemonStderrPath(inputs.profile)}
 Environment="PATH=${escape(inputs.envPath)}"
 Environment="LARK_CHANNEL_HOME=${escape(inputs.channelHome)}"
+EnvironmentFile=-${inputs.channelHome}/service.env
 
 [Install]
 WantedBy=default.target

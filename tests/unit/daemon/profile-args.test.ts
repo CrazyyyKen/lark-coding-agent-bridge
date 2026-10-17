@@ -48,6 +48,8 @@ describe('profile-scoped daemon paths and arguments', () => {
     expect(buildPlist(inputs)).toContain('<key>LARK_CHANNEL_HOME</key>\n        <string>/tmp/lark-channel-home</string>');
     expect(buildUnit(inputs)).toContain('run --profile codex-dev');
     expect(buildUnit(inputs)).toContain('Environment="LARK_CHANNEL_HOME=/tmp/lark-channel-home"');
+    // Optional per-instance env (e.g. ANTHROPIC_API_KEY); `-` = missing file is fine.
+    expect(buildUnit(inputs)).toContain('EnvironmentFile=-/tmp/lark-channel-home/service.env');
     expect(buildLauncherCmd(inputs)).toContain('run --profile codex-dev');
     expect(buildLauncherCmd(inputs)).toContain('set "LARK_CHANNEL_HOME=/tmp/lark-channel-home"');
   });
