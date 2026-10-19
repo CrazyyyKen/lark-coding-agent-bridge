@@ -2,6 +2,8 @@
 
 How GDEX runs `lark-channel-bridge` on a shared Ubuntu server (or WSL2 for testing). Background and reasoning: [docs/department-agents-plan.md](../docs/department-agents-plan.md) §5–§6.
 
+**On a shared host that already runs other containers (e.g. a production server), use [docker/](docker/README.md) instead:** one container per bot, nothing installed on the host.
+
 Every bot (a department agent, HR Help, or one person's assistant) is its **own instance**:
 
 | | Per instance |
@@ -18,6 +20,34 @@ Files here:
 |---|---|
 | `systemd/lark-bridge@.service` | System template unit, hardened so an instance can only write inside its own home |
 | `workspace-template/.claude/settings.json` | Claude Code permissions for `workspace` mode: allows `lark-cli`, reads of message attachments, and blocks the agent from reading the bridge's secrets |
+| [`new-instance.sh`](new-instance.sh) | Steps 2–4 below (and the service template from step 1) in one command. Carries its own copies of the two files above, so keep them in sync |
+| [`remove-instance.sh`](remove-instance.sh) | Stops an instance, archives its home folder and deletes its Linux user |
+
+## Quick start: one command per bot
+
+The server does not need this repo. Install the tools from npm (§1), then copy the two scripts over once:
+
+```bash
+# from your machine
+scp deploy/new-instance.sh deploy/remove-instance.sh <server>:/tmp/
+# on the server
+sudo install -d -m 700 /opt/lark-tools
+sudo install -m 700 /tmp/new-instance.sh /tmp/remove-instance.sh /opt/lark-tools/
+```
+
+Then, per bot:
+
+```bash
+# Personal assistant: the owner scans the QR code, then signs in to Claude
+sudo bash /opt/lark-tools/new-instance.sh staff-aisyah
+
+# Shared bot with an app the Lark admin created, on the Team plan's API key
+sudo bash /opt/lark-tools/new-instance.sh dept-hr --app-id cli_xxx --mode team --claude api-key
+```
+
+Defaults: `--mode personal`, `--access workspace` (with the permission template), `--claude login`. Run with `--help` for all options. Remove a bot with `sudo bash /opt/lark-tools/remove-instance.sh <name>`. In WSL you can run the scripts straight from the repo under `/mnt/c/...`.
+
+The manual steps below are what the script does.
 
 ## 1. Host setup (once, as root)
 
@@ -25,30 +55,27 @@ Files here:
 # Node 22 + global tools (installed by root, never auto-updated by bots)
 curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
 apt-get install -y nodejs jq
-npm install -g @anthropic-ai/claude-code @larksuite/cli
-
-# The bridge: install the GDEX fork from this repo, not the public npm package
-git clone <gdex-fork-url> /opt/lark-coding-agent-bridge && cd /opt/lark-coding-agent-bridge
-corepack enable && pnpm install --frozen-lockfile && pnpm build && npm install -g .
+npm install -g lark-channel-bridge @anthropic-ai/claude-code @larksuite/cli
 
 install -d -m 755 /srv/lark
-cp deploy/systemd/lark-bridge@.service /etc/systemd/system/
+cp lark-bridge@.service /etc/systemd/system/    # new-instance.sh does this for you
 systemctl daemon-reload
 ```
+
+The public npm package is enough: the service template above brings its own `EnvironmentFile=` line, so the server doesn't need this repo's code changes. If the GDEX fork later carries changes the server needs, build a package on your machine with `pnpm build && npm pack` and install that file on the server with `npm install -g ./lark-channel-bridge-<version>.tgz`.
 
 ## 2. Create an instance (as root)
 
 ```bash
 NAME=test-hr          # Linux user + instance name
 APP_ID=cli_xxxxxxxx   # the Lark app for this bot
-REPO=/opt/lark-coding-agent-bridge
 
 useradd --system --user-group --create-home --home-dir /srv/lark/$NAME --shell /usr/sbin/nologin $NAME
 chmod 700 /srv/lark/$NAME
 
 # Workspace with the permission template
 install -d -m 700 -o $NAME -g $NAME /srv/lark/$NAME/workspace
-cp -r $REPO/deploy/workspace-template/.claude /srv/lark/$NAME/workspace/
+cp -r workspace-template/.claude /srv/lark/$NAME/workspace/   # the copy from deploy/
 chown -R $NAME:$NAME /srv/lark/$NAME/workspace
 
 # Profile (prompts for the App Secret). Lark international tenant = --tenant lark
@@ -95,7 +122,7 @@ systemctl enable --now lark-bridge@$NAME
 journalctl -u lark-bridge@$NAME -f
 ```
 
-The first foreground run matters: the bridge only binds lark-cli interactively; as a service (no terminal) it skips that step.
+The foreground run is a quick way to see errors. It is only required when lark-cli is **not** installed: the bridge auto-installs lark-cli only with a terminal. With lark-cli installed globally (§1), the service binds it on start, which is why `new-instance.sh` goes straight to the service.
 
 ## Rules
 

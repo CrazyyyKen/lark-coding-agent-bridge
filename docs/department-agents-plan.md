@@ -715,7 +715,7 @@ Milestones  ▲wk2 decisions+apps  ▲wk4 CEO & CFO live  ▲wk5 all 5 execs + H
 | Self-service onboarding | `src/ui/qr-register.ts`, `src/ui/onboard.ts`, `src/ui/server.ts` |
 | Observability | `src/observability/events.ts`, `src/core/telemetry.ts` |
 | Deployment (done 2026-10-18) | `deploy/systemd/lark-bridge@.service` (hardened per-instance system unit), `deploy/workspace-template/.claude/settings.json` (workspace-mode permissions), `deploy/README.md`; optional `EnvironmentFile=<home>/service.env` in the built-in user unit (`src/daemon/systemd.ts`) |
-| Scripts (new) | `scripts/new-instance.sh` (automates deploy/README.md §2–4), `scripts/knowledge-sync.ts`, `scripts/offboard.sh`, `deploy/ansible/` |
+| Scripts (new) | `deploy/new-instance.sh` (automates deploy/README.md §2–4), `scripts/knowledge-sync.ts`, `scripts/offboard.sh`, `deploy/ansible/` |
 
 ### B. Sources
 

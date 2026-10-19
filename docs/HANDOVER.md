@@ -103,7 +103,7 @@ WSL setup: set `systemd=true` and `appendWindowsPath=false` in `/etc/wsl.conf` (
 
 ### Step 4: after the spike (weeks 2–5, plan Phase 1)
 
-1. Write `scripts/new-instance.sh` to automate [deploy/README.md](../deploy/README.md) §2–4, adjusted for whatever the spike found.
+1. Test and adjust [deploy/new-instance.sh](../deploy/new-instance.sh) (written 2026-10-19, not yet run), which automates [deploy/README.md](../deploy/README.md) §2–4 and needs no repo on the server. Fold in whatever the spike found.
 2. Write the Ansible playbook for the host setup (deploy/README.md §1). Write it during the build, not after.
 3. Onboard **Mr Teong and Ms Yinn** (week 3–4), then **Mr Nicholas, Ms Caren and Ms Salwa** (week 5). Run the isolation checklist (plan task 1.5) before each handover.
 4. **HR Agent v1** with 3 HR volunteers (week 5).
@@ -114,7 +114,7 @@ The full phase plan is in plan §9; the timeline is in §11.
 
 - **An API key overrides the seat sign-in.** Never put `ANTHROPIC_API_KEY` in a personal assistant's `service.env`, or it will bill the shared credits instead of the owner's seat.
 - **Never copy an instance's folder between machines or Linux users.** The bridge encrypts its secrets with a key derived from the hostname and username ([keystore.ts](../src/config/keystore.ts)). Create every instance fresh, and don't rename the server after setup.
-- **The first run must be in the foreground** (`sudo -u <name> -H lark-channel-bridge run`). The bridge only sets up lark-cli when it has a terminal; as a service it skips that step.
+- **Install lark-cli globally before creating instances.** The bridge auto-installs lark-cli only when it has a terminal; as a service it skips the install (binding still works when lark-cli is already installed). [deploy/new-instance.sh](../deploy/new-instance.sh) checks this.
 - **Don't use `lark-channel-bridge start` on the server.** It installs a per-user unit (`systemctl --user`), which needs lingering and a user session per account. Use the `lark-bridge@<name>` template instead.
 - **`workspace` mode without the template breaks the bot.** No one can approve a command in a chat bot, so every `lark-cli` call is refused. Copy `deploy/workspace-template/.claude` into each bot's workspace.
 - **Shared bots stop if the pooled credit runs out mid-month.** Set auto-reload or buy credits, and alert at 80 % (plan §12).

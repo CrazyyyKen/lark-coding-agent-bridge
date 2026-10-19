@@ -1,0 +1,4 @@
+# Files run or read on Linux must keep LF endings, even on Windows checkouts.
+*.sh            text eol=lf
+*.service       text eol=lf
+deploy/docker/** text eol=lf
