@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(lark-cli:*)",
+      "Bash(date)",
+      "Read(~/.lark-channel/profiles/*/media/**)"
+    ],
+    "deny": [
+      "Read(~/.lark-channel/config.json)",
+      "Read(~/.lark-channel/service.env)",
+      "Read(~/.lark-channel/**/secrets.enc)",
+      "Read(~/.lark-channel/**/.keystore.salt)",
+      "Read(~/.lark-channel/**/lark-cli/**)",
+      "Read(~/.claude.json)",
+      "Read(~/.claude/.credentials.json)",
+      "Edit(~/.lark-channel/**)",
+      "Edit(~/.claude/**)"
+    ]
+  }
+}

@@ -1,0 +1,3 @@
+# Created on the host by lark-bots.sh; hold bot names and Claude credentials
+bots/
+claude.env

@@ -1,0 +1,48 @@
+# Compose template for ONE bot. lark-bots.sh runs it once per bot as its own
+# project, with BOT set from bots/<name>.env:
+#
+#   docker compose -f bot.yaml --env-file bots/<name>.env up -d
+#
+# Limits keep the bots small next to the production containers on this host.
+name: lark-bot-${BOT:?set BOT}
+
+services:
+  bot:
+    image: lark-bot:${IMAGE_TAG:-latest}
+    container_name: lark-bot-${BOT}
+    # The bridge encrypts its secrets with a key derived from the hostname, so
+    # the hostname must stay the same when the container is recreated.
+    hostname: lark-bot-${BOT}
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-Asia/Kuala_Lumpur}
+    env_file:
+      # Shared Claude credential ("sign in once"): CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY
+      - path: claude.env
+        required: false
+      # Optional per-bot override
+      - path: bots/${BOT}.claude.env
+        required: false
+    volumes:
+      - home:/home/bot
+    # Resource limits: production comes first.
+    mem_limit: ${MEM_LIMIT:-1536m}
+    memswap_limit: ${MEM_LIMIT:-1536m}
+    cpus: ${CPUS:-1.0}
+    cpu_shares: 256
+    pids_limit: 256
+    # Hardening: no extra privileges, read-only image, writes only to its home and /tmp.
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  home:
+    name: lark-bot-${BOT}-home
