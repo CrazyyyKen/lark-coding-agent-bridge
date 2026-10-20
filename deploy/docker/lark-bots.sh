@@ -223,6 +223,19 @@ cmd_authorize() {
     sleep 2
   done
 
+  local mode
+  mode="$(docker exec "$c" node -e '
+    const c = require("/home/bot/.lark-channel/config.json");
+    console.log((c.profiles[process.argv[1]] || {}).mode || "personal");' "$name")"
+  [ "$mode" != team ] \
+    || die "$name is a team bot: it only ever uses its own Lark identity, so it can't act as a person"
+
+  # Until a personal login exists, the bridge keeps lark-cli in strict "bot" mode, which
+  # also refuses to start a login. Lift it for the login; on the restart at the end the
+  # bridge sees the new login and sets the final policy itself.
+  bot_lark_cli "$name" config strict-mode off >/dev/null 2>&1 \
+    || warn "couldn't turn off lark-cli strict mode; the login may be refused"
+
   # Explicit options: one link with exactly those.
   if [ "${#scope_args[@]}" -gt 0 ]; then
     authorize_round "$name" "" "${scope_args[@]}" || return 1

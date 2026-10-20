@@ -10,6 +10,32 @@ Replace `<user>` and `<server>` with the server's login user and address (the sa
 - Outbound HTTPS from the server to `larksuite.com`, `api.anthropic.com`, `registry.npmjs.org` and Docker Hub.
 - The server owner's OK, since the bots run next to their containers.
 
+## Quick reference: add a bot
+
+Once the one-time setup (steps 1–4) is done, adding a person's bot is:
+
+```bash
+cd ~/lark-bots
+
+# 1. Create the bot. The owner scans the QR code and creates their own new app.
+#    At "Connect the owner's Lark account now?" answer n to do it in step 2 instead
+#    (or Y to do it right here and skip step 2).
+./lark-bots.sh add <name>
+
+# 2. Connect the owner's Lark account. Send the owner the link (or let them scan the
+#    QR code); they sign in as themselves and approve each link.
+./lark-bots.sh authorize <name>
+
+# 3. Restart. authorize already restarts the bot, so this is only needed if you changed
+#    something by hand or the bot isn't answering.
+./lark-bots.sh restart <name>
+
+# 4. Check: running, and connected as the owner.
+./lark-bots.sh status <name>
+```
+
+Then the owner DMs their bot in Lark: `hi`, then "What's on my calendar today?". Details for each step are below.
+
 ## 1. Copy the folder to the server
 
 Run this **on your laptop**, not inside an SSH session. It asks for the server user's password.
@@ -191,6 +217,7 @@ docker compose -f bot.yaml --env-file bots/<name>.env run --rm bot claude
 |---|---|
 | `add` printed `warning: Claude did not answer` | The bot isn't signed in. Open Claude Code (see "Which account"), `/login`, `/exit`, then `./lark-bots.sh restart <name>` |
 | `status` says "Owner's Lark account: not connected" | `./lark-bots.sh authorize <name>` |
+| `authorize` fails with `strict mode is "bot"` | Your `lark-bots.sh` is older than this guide: copy the current one over. `authorize` now lifts strict mode before the login. If the bot is a `team` bot, that's correct: team bots never act as a person |
 | Authorization page or `authorize` complains about permissions | Remove permissions the bot doesn't need from the app in the Lark developer console, or `./lark-bots.sh authorize <name> --domain calendar,mail` |
 | Bot shows `Restarting` or `Exited` | `docker logs --tail 50 lark-bot-<name>` |
 | Log says "read-only file system" | Comment out `read_only: true` in `bot.yaml`, `./lark-bots.sh restart <name>`, and report what tried to write |
