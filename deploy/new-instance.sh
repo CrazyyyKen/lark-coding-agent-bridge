@@ -12,7 +12,8 @@
 #                            app and becomes its owner.
 #   --tenant <lark|feishu>   Tenant for --app-id. Default: lark
 #   --mode <personal|team>   personal: answers only the app owner and may use the owner's
-#                            Lark login. team: anyone may use it, bot identity only.
+#                            Lark login. team: anyone may use it; each member signs in as
+#                            themselves in a DM (per-person login), groups use the bot identity.
 #                            Default: personal
 #   --access <workspace|read-only|full>
 #                            Claude Code permission level. Default: full for personal bots (no
@@ -268,6 +269,8 @@ as_bot node -e '
   const p = cfg.profiles && cfg.profiles[name];
   if (!p) { console.error(`profile ${name} not found in ${file}`); process.exit(1); }
   p.mode = mode;
+  // Team bots: each member signs in as themselves (docs/per-user-login.md).
+  if (mode === "team") p.team = { ...(p.team || {}), perUserLogin: true };
   p.permissions = { defaultAccess: access, maxAccess: access };
   fs.writeFileSync(file + ".tmp", JSON.stringify(cfg, null, 2) + "\n", { mode: 0o600 });
   fs.renameSync(file + ".tmp", file);

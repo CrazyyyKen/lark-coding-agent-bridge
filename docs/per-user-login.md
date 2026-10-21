@@ -1,6 +1,6 @@
 # Per-person Lark sign-in for team bots
 
-Status: built on branch `feat/per-user-login`, not yet deployed. Trial results below are from `lark-bot-gdex-ai` on `10.80.0.29`, 2026-10-20.
+Status: deployed 2026-10-21 and **on for `gdex-ai`** (17:21; config backup `config.json.bak-perUserLogin` in the container). New team bots get it automatically (`lark-bots.sh add --mode team`, `set-mode <name> team`, `new-instance.sh --mode team`). Trial results below are from `lark-bot-gdex-ai` on `10.80.0.29`, 2026-10-20.
 
 ## Why
 
@@ -28,7 +28,7 @@ Concurrency is unchanged: several people can be signed in at once and their runs
 
 The Docker image installs the bridge packed from this repo ([Packing the bridge](../deploy/docker/README.md#packing-the-bridge)), so pack and rebuild after changes.
 
-Then, for a team bot (Claude agent only):
+Bots created or switched to team mode with the scripts have it on already. For a team bot made before that (Claude agent only):
 
 ```bash
 docker exec lark-bot-<name> node -e '

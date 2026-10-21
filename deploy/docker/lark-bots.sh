@@ -30,7 +30,8 @@
 #                            availability set to the department; see SETUP.md.
 #   --tenant <lark|feishu>   Tenant for --app-id. Default: lark
 #   --mode <personal|team>   personal: answers only the app owner, may use the owner's Lark
-#                            login. team: anyone may use it, bot identity only. Default: personal
+#                            login. team: anyone may use it; each member signs in as themselves
+#                            in a DM (per-person login), groups use the bot identity. Default: personal
 #   --access <workspace|read-only|full>
 #                            Claude Code permission level. Default: full for personal bots (no
 #                            permission prompts, keeps memory), workspace for team bots. Team bots
@@ -102,6 +103,9 @@ apply_profile() {
     const cfg = JSON.parse(fs.readFileSync(file, "utf8"));
     const p = cfg.profiles && cfg.profiles[name];
     if (!p) { console.error(`profile ${name} not found in ${file}`); process.exit(1); }
+    // Becoming a team bot: each member signs in as themselves
+    // (docs/per-user-login.md). set-access keeps whatever a team bot has.
+    if (mode === "team" && p.mode !== "team") p.team = { ...(p.team || {}), perUserLogin: true };
     p.mode = mode;
     p.permissions = { ...(p.permissions || {}), defaultAccess: access, maxAccess: access };
     fs.writeFileSync(file + ".tmp", JSON.stringify(cfg, null, 2) + "\n", { mode: 0o600 });
@@ -226,6 +230,8 @@ cmd_add() {
     const p = cfg.profiles && cfg.profiles[name];
     if (!p) { console.error(`profile ${name} not found in ${file}`); process.exit(1); }
     p.mode = mode;
+    // Team bots: each member signs in as themselves (docs/per-user-login.md).
+    if (mode === "team") p.team = { ...(p.team || {}), perUserLogin: true };
     p.permissions = { defaultAccess: access, maxAccess: access };
     p.preferences = { ...(p.preferences || {}), maxConcurrentRuns: 1 };
     fs.writeFileSync(file + ".tmp", JSON.stringify(cfg, null, 2) + "\n", { mode: 0o600 });
@@ -323,7 +329,9 @@ In team mode:
   - Anyone who can reach the bot in Lark can use it. The Lark app's availability decides who
     that is: an app created from the QR code is normally available only to the person who
     scanned it, so department members may still not see the bot.
-  - The bot only ever uses its own Lark identity, never a person's.
+  - In a DM, each member signs in once as themselves (the bot sends them a sign-in card) and
+    the bot acts for them with their own login only. Groups, doc comments and meetings use the
+    bot's own identity.
 EOF
     [ -z "$owner" ] || cat <<EOF
   - It is connected to $owner's Lark account. That login will be removed, so nobody else can

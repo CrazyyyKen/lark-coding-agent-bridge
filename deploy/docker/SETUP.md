@@ -204,7 +204,7 @@ cd ~/lark-bots
 
 There's no owner login to connect: `add` skips that step for team bots, and `authorize` refuses them.
 
-> **Coming:** optional per-person Lark sign-in for team bots (each member signs in with their own account, in their own folder) is being built on branch `feat/per-user-login`; see [docs/per-user-login.md](../../docs/per-user-login.md). Until it ships and is switched on for a bot, a team bot acts only as the bot itself.
+> **Per-person sign-in:** team bots made with `add --mode team` or `set-mode <name> team` have it on. In a DM, each member gets a **Sign in with Lark** card and the bot then acts for them with their own login, in their own folder; groups, doc comments and meetings stay on the bot's identity. See [docs/per-user-login.md](../../docs/per-user-login.md), including how to turn it on for an older team bot.
 
 ### 3. Give it its own Claude credential
 
