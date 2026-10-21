@@ -113,6 +113,8 @@ apply_profile() {
 # ─── Commands ────────────────────────────────────────────────────────────────
 
 cmd_build() {
+  [ -f "$DIR/lark-channel-bridge.tgz" ] \
+    || die "lark-channel-bridge.tgz is missing: pack the bridge from the repo and copy it here (README.md, Packing the bridge)"
   step "Building $IMAGE"
   docker build --pull -t "$IMAGE" "$DIR"
   docker image ls "$IMAGE"

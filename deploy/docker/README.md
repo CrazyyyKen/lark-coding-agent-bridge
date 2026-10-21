@@ -24,7 +24,7 @@ Shared by all bots: the image `lark-bot:latest` and, optionally, one Claude cred
 
 ## Setup on the host (once)
 
-Needs Docker with Compose, and a user in the `docker` group. Copy this folder to the host, for example to `~/lark-bots`, then:
+Needs Docker with Compose, and a user in the `docker` group. Pack the bridge first (next section), copy this folder to the host, for example to `~/lark-bots`, then:
 
 ```bash
 cd ~/lark-bots
@@ -32,6 +32,18 @@ chmod +x lark-bots.sh
 ./lark-bots.sh build        # about 1 GB image
 ./lark-bots.sh set-claude   # optional: one Claude credential for every bot
 ```
+
+## Packing the bridge
+
+The image installs the bridge from this repo, not from npm (the npm release lacks our changes). On a machine with the repo, from its root:
+
+```bash
+pnpm install && pnpm build && pnpm pack
+mv lark-channel-bridge-*.tgz deploy/docker/lark-channel-bridge.tgz
+scp deploy/docker/lark-channel-bridge.tgz <host>:~/lark-bots/
+```
+
+Copy the other files in this folder too when they've changed, but never the host's `bots/` or `claude.env`.
 
 ## Add a bot
 
@@ -62,11 +74,12 @@ Then the owner DMs the bot `hi` and `/status`.
 | Restart | `./lark-bots.sh restart <name>` or `restart all` |
 | Change who a bot answers | `./lark-bots.sh set-mode <name> <personal\|team>` |
 | Change how much Claude Code may do | `./lark-bots.sh set-access <name> <full\|workspace\|read-only>` |
-| Update the bridge, Claude Code and lark-cli | `./lark-bots.sh update` |
+| Update the bridge, Claude Code and lark-cli on every bot | Pack and copy the bridge, then `./lark-bots.sh update` |
+| Update one bot first (test bot) | Pack and copy, `./lark-bots.sh build`, then `./lark-bots.sh restart <name>`; the others stay on the old image until restarted |
 | Remove (keep data / delete data) | `./lark-bots.sh remove <name>` / `remove <name> --purge` |
 | Remove everything | `remove --purge` each bot, then `docker image rm lark-bot:latest` |
 
-To pin versions, build with `docker build --build-arg BRIDGE_VERSION=0.7.1 --build-arg CLAUDE_CODE_VERSION=<version> -t lark-bot:latest .`.
+To pin Claude Code or lark-cli, build with `docker build --build-arg CLAUDE_CODE_VERSION=<version> --build-arg LARK_CLI_VERSION=<version> -t lark-bot:latest .`.
 
 ## Things to know
 

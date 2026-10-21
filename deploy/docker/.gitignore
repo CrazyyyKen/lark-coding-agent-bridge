@@ -1,3 +1,5 @@
 # Created on the host by lark-bots.sh; hold bot names and Claude credentials
 bots/
 claude.env
+# The packed bridge, built from the repo (README.md, Packing the bridge)
+lark-channel-bridge.tgz

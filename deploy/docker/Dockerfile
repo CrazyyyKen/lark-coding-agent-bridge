@@ -2,7 +2,6 @@
 # Each bot runs it in its own container with its own home volume.
 FROM node:22-bookworm-slim
 
-ARG BRIDGE_VERSION=0.7.1
 ARG CLAUDE_CODE_VERSION=latest
 ARG LARK_CLI_VERSION=latest
 
@@ -11,10 +10,13 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates curl git tini tzdata \
  && rm -rf /var/lib/apt/lists/*
 
+# The bridge is this repo's build, not the npm release: see "Packing the bridge" in README.md.
+COPY lark-channel-bridge.tgz /tmp/lark-channel-bridge.tgz
 RUN npm install -g \
-      "lark-channel-bridge@${BRIDGE_VERSION}" \
+      /tmp/lark-channel-bridge.tgz \
       "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
       "@larksuite/cli@${LARK_CLI_VERSION}" \
+ && rm /tmp/lark-channel-bridge.tgz \
  && npm cache clean --force
 
 # Unprivileged user. A fixed home so volumes keep the same layout across rebuilds.
