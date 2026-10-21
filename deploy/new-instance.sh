@@ -15,7 +15,9 @@
 #                            Lark login. team: anyone may use it, bot identity only.
 #                            Default: personal
 #   --access <workspace|read-only|full>
-#                            Claude Code permission level. Default: workspace
+#                            Claude Code permission level. Default: full for personal bots (no
+#                            permission prompts, keeps memory), workspace for team bots (which
+#                            can't be full)
 #   --claude <login|api-key|skip>
 #                            login: sign in to a Claude account now (personal assistants).
 #                            api-key: store ANTHROPIC_API_KEY in service.env (shared bots).
@@ -33,7 +35,7 @@ step() { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
 warn() { printf '\033[33mwarning:\033[0m %s\n' "$*" >&2; }
 die()  { printf '\033[31merror:\033[0m %s\n' "$*" >&2; exit 1; }
 
-usage() { sed -n '2,25p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+usage() { sed -n '2,/^$/p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 
 # ─── Embedded files ───────────────────────────────────────────────────────────
 # Copies of deploy/systemd/lark-bridge@.service and
@@ -95,7 +97,39 @@ WantedBy=multi-user.target
 EOF
 }
 
+# Full access (personal bots): copy of deploy/docker/workspace-settings-personal.json.
+# Otherwise: copy of deploy/workspace-template/.claude/settings.json.
 workspace_settings() {
+  if [ "$1" = full ]; then
+    cat <<'EOF'
+{
+  "permissions": {
+    "allow": [
+      "Bash(lark-cli:*)",
+      "Bash(date)",
+      "Read(~/.lark-channel/profiles/*/media/**)"
+    ],
+    "deny": [
+      "Read(~/.lark-channel/config.json)",
+      "Read(~/.lark-channel/service.env)",
+      "Read(~/.lark-channel/**/secrets.enc)",
+      "Read(~/.lark-channel/**/.keystore.salt)",
+      "Read(~/.lark-channel/**/lark-cli/**)",
+      "Read(~/.local/share/lark-cli/**)",
+      "Edit(~/.local/share/lark-cli/**)",
+      "Read(~/.claude.json)",
+      "Read(~/.claude/.credentials.json)",
+      "Edit(~/.lark-channel/**)",
+      "Edit(~/.claude.json)",
+      "Edit(~/.claude/.credentials.json)",
+      "Edit(~/.claude/settings.json)",
+      "Edit(~/.claude/settings.local.json)"
+    ]
+  }
+}
+EOF
+    return
+  fi
   cat <<'EOF'
 {
   "permissions": {
@@ -110,6 +144,8 @@ workspace_settings() {
       "Read(~/.lark-channel/**/secrets.enc)",
       "Read(~/.lark-channel/**/.keystore.salt)",
       "Read(~/.lark-channel/**/lark-cli/**)",
+      "Read(~/.local/share/lark-cli/**)",
+      "Edit(~/.local/share/lark-cli/**)",
       "Read(~/.claude.json)",
       "Read(~/.claude/.credentials.json)",
       "Edit(~/.lark-channel/**)",
@@ -126,7 +162,7 @@ NAME=""
 APP_ID=""
 TENANT="lark"
 MODE="personal"
-ACCESS="workspace"
+ACCESS=""
 CLAUDE="login"
 
 while [ $# -gt 0 ]; do
@@ -146,7 +182,15 @@ done
 [[ "$NAME" =~ ^[a-z][a-z0-9-]{1,30}$ ]] || die "name must be 2-31 characters: lowercase letters, digits and '-', starting with a letter"
 [[ "$TENANT" =~ ^(lark|feishu)$ ]] || die "--tenant must be lark or feishu"
 [[ "$MODE" =~ ^(personal|team)$ ]] || die "--mode must be personal or team"
+# A personal bot serves only its owner: no permission prompts (no one can answer them in a
+# chat) and it may keep memory. A team bot can't be full: permission rules bind only Claude's
+# file tools, not the shell, so one member's run could reach another member's login.
+if [ -z "$ACCESS" ]; then
+  [ "$MODE" = team ] && ACCESS=workspace || ACCESS=full
+fi
 [[ "$ACCESS" =~ ^(workspace|read-only|full)$ ]] || die "--access must be workspace, read-only or full"
+[ "$MODE" = team ] && [ "$ACCESS" = full ] \
+  && die "a team bot can't have full access: one member could reach another member's Lark login"
 [[ "$CLAUDE" =~ ^(login|api-key|skip)$ ]] || die "--claude must be login, api-key or skip"
 
 HOME_DIR="$BASE/$NAME"
@@ -193,7 +237,7 @@ step "Creating Linux user $NAME"
 useradd --system --user-group --create-home --home-dir "$HOME_DIR" --shell /usr/sbin/nologin "$NAME"
 chmod 700 "$HOME_DIR"
 install -d -m 700 -o "$NAME" -g "$NAME" "$WORKSPACE" "$WORKSPACE/.claude"
-workspace_settings > "$WORKSPACE/.claude/settings.json"
+workspace_settings "$ACCESS" > "$WORKSPACE/.claude/settings.json"
 chown -R "$NAME:$NAME" "$WORKSPACE"
 chmod 600 "$WORKSPACE/.claude/settings.json"
 echo "home: $HOME_DIR (mode 700) · workspace with the permission template"

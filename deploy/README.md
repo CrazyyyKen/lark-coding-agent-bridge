@@ -45,7 +45,7 @@ sudo bash /opt/lark-tools/new-instance.sh staff-aisyah
 sudo bash /opt/lark-tools/new-instance.sh dept-hr --app-id cli_xxx --mode team --claude api-key
 ```
 
-Defaults: `--mode personal`, `--access workspace` (with the permission template), `--claude login`. Run with `--help` for all options. Remove a bot with `sudo bash /opt/lark-tools/remove-instance.sh <name>`. In WSL you can run the scripts straight from the repo under `/mnt/c/...`.
+Defaults: `--mode personal`, `--access full` for a personal bot (no permission prompts, keeps memory; credentials stay denied) or `workspace` for a team bot (with the permission template; team bots can't be `full`), `--claude login`. Run with `--help` for all options. Remove a bot with `sudo bash /opt/lark-tools/remove-instance.sh <name>`. In WSL you can run the scripts straight from the repo under `/mnt/c/...`.
 
 The manual steps below are what the script does.
 
@@ -83,7 +83,7 @@ sudo -u $NAME -H lark-channel-bridge profile create $NAME \
   --agent claude --app-id $APP_ID --tenant lark --workspace /srv/lark/$NAME/workspace
 ```
 
-Set the profile's mode and permissions (shared bot shown; for a personal assistant use `"personal"`):
+Set the profile's mode and permissions (shared bot shown; for a personal assistant use `"personal"` and `"full"`, with [workspace-settings-personal.json](docker/workspace-settings-personal.json) as the workspace's `.claude/settings.json`):
 
 ```bash
 CFG=/srv/lark/$NAME/.lark-channel/config.json
