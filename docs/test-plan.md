@@ -4,6 +4,37 @@ Branches `feat/scheduler` (it contains `feat/per-user-login`) and `feat/models-a
 
 Sections 5 (model default) and 7 (deploy) can be partly tested now. Section 6 (English) and the `/config` rows in section 5 need the deploy first.
 
+## Release 2026-10-21 17:00: what to test by hand
+
+Deployed: image `lark-bot:latest` (5168a852d777) from `main` @ `412fddf`, with scheduled tasks, one-tap cards and quick replies. Rollback image: `lark-bot:pre-action-cards` (and `backup-20261021/lark-channel-bridge.pre-action-cards.tgz`). Rolled out at 17:04–17:08, each bot only after 2 idle minutes: `joeee` first as the canary, then `weileong`, `ken`, `gdex-ai`. All four connected with no errors; Wei Leong's full access is unchanged.
+
+Automated tests already cover the logic: parsing, the requester-only and single-use rules, cards and buttons, missed runs, and hiding the quick-reply block. What's left needs a real Lark client, a real mailbox, and the agent actually following its instructions.
+
+**Now, on `joeee` (personal, DM, use a phone for at least the first three):**
+
+| Order | Rows | Why it can only be checked by hand |
+|---|---|---|
+| 1 | 8.1–8.5, 8.9 | Buttons render on mobile and desktop, no ` ```quick-replies ` text leaks, tapping sends the right message, a second tap is refused |
+| 2 | 2.16, 2.16a, 2.16b, 2.16e | Asking in plain words produces the "Create schedule" card; the list card's buttons |
+| 3 | 2.11, 2.12, 8.17–8.19 | A `once` task 3 min ahead really fires on time, the run card's Run again / Pause / Resume |
+| 4 | 8.7, 8.10 | After "triage my unread inbox", the next steps arrive as buttons and act with your login |
+| 5 | 8.16, 4.1–4.3 | `/help` buttons; normal chat still fine |
+| 6 | 2.18 / 2.16f (optional) | Stop the bot for 70+ minutes over a task's time: the skipped card's Run it now |
+
+**After the other bots are on the new image:**
+
+| Rows | Who |
+|---|---|
+| 2.14, 3.9 | Wei Leong: the real weekday 08:30 triage (set it up from the card), drafts only, nothing on Sat/Sun |
+| 8.6, 2.10, 2.16c | Any team bot, in a group or with two accounts: someone else's tap does nothing |
+
+**Blocked until set up:**
+
+| Rows | Needs |
+|---|---|
+| 1.x, 8.11–8.15, 2.20–2.22 | A team bot with `team.perUserLogin: true`. `gdex-ai` doesn't have it turned on (see [per-user-login.md](per-user-login.md#turning-it-on)). |
+| 3.4, 3.5 on `joeee` / `ken` | They still have `workspace` access (created before the full-access default): `./lark-bots.sh set-access <name> full` if wanted. |
+
 ## 0. Before you start
 
 | Need | Notes |
