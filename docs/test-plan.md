@@ -8,7 +8,7 @@ Sections 5 (model default) and 7 (deploy) can be partly tested now. Section 6 (E
 
 | Need | Notes |
 |---|---|
-| A build of this branch in the image | Today the server bots run the stock npm bridge `0.7.1`, not this repo: the Dockerfile installs it from npm (`BRIDGE_VERSION`). The deploy changes the Dockerfile to build from this repo (section 7). Until then only section 3 (access) and rows 5.1–5.2 can be tested on the server. |
+| A build of `main` in the image | The Dockerfile installs the bridge packed from this repo ([Packing the bridge](../deploy/docker/README.md#packing-the-bridge)). Bots built before 2026-10-21 run the stock npm `0.7.1`; until a bot is rebuilt, only section 3 (access) and rows 5.1–5.2 can be tested on it. |
 | **Team test bot** with `team.perUserLogin: true` | Not `gdex-ai` in production use; a separate app whose availability includes the testers. |
 | **Personal test bot** | Created with the new `add` (to test the defaults). |
 | Three Lark accounts | **A** and **B**: department members. **C**: not in the team app's availability. A's calendar must not be shared with B. |

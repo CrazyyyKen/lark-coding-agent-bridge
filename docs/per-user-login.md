@@ -26,7 +26,7 @@ Concurrency is unchanged: several people can be signed in at once and their runs
 
 ## Turning it on
 
-The Docker image installs `lark-channel-bridge` from npm (`BRIDGE_VERSION=0.7.1` in the [Dockerfile](../deploy/docker/Dockerfile)), so this branch has to be packaged into the image first: publish a version, or `npm pack` and install the tarball in the Dockerfile.
+The Docker image installs the bridge packed from this repo ([Packing the bridge](../deploy/docker/README.md#packing-the-bridge)), so pack and rebuild after changes.
 
 Then, for a team bot (Claude agent only):
 

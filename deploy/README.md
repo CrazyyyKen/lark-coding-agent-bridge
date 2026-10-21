@@ -62,7 +62,7 @@ cp lark-bridge@.service /etc/systemd/system/    # new-instance.sh does this for 
 systemctl daemon-reload
 ```
 
-The public npm package is enough: the service template above brings its own `EnvironmentFile=` line, so the server doesn't need this repo's code changes. If the GDEX fork later carries changes the server needs, build a package on your machine with `pnpm build && npm pack` and install that file on the server with `npm install -g ./lark-channel-bridge-<version>.tgz`.
+Install the GDEX fork, not the public npm package: the fork carries per-person sign-in, scheduled tasks, the English chat text and the newer models. Build a package on your machine with `pnpm build && pnpm pack` and install that file on the server with `npm install -g ./lark-channel-bridge-<version>.tgz`.
 
 ## 2. Create an instance (as root)
 
