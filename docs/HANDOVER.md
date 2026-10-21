@@ -117,6 +117,8 @@ The full phase plan is in plan §9; the timeline is in §11.
 - **Install lark-cli globally before creating instances.** The bridge auto-installs lark-cli only when it has a terminal; as a service it skips the install (binding still works when lark-cli is already installed). [deploy/new-instance.sh](../deploy/new-instance.sh) checks this.
 - **Don't use `lark-channel-bridge start` on the server.** It installs a per-user unit (`systemctl --user`), which needs lingering and a user session per account. Use the `lark-bridge@<name>` template instead.
 - **`workspace` mode without the template breaks the bot.** No one can approve a command in a chat bot, so every `lark-cli` call is refused. Copy `deploy/workspace-template/.claude` into each bot's workspace.
+- **A department bot needs an admin-created Lark app and `--mode team`** (found 2026-10-20: a server-hosted bot answered only its owner). A QR-created app is normally available only to whoever scanned it, and `personal` mode silently ignores everyone but the owner. Follow [deploy/docker/SETUP.md, Creating a department bot](../deploy/docker/SETUP.md#creating-a-department-bot). Never `/invite` people to a personal assistant: they would act through its owner's Lark login.
+- **Department bots can run on an API key or on a subscription seat set aside for that bot** (`./lark-bots.sh set-claude <name>`; plan §10.3). Never on a person's own seat. Before production on a seat, confirm with Anthropic that a Team seat may be assigned to a shared internal bot.
 - **Shared bots stop if the pooled credit runs out mid-month.** Set auto-reload or buy credits, and alert at 80 % (plan §12).
 
 ## 7. Where things are

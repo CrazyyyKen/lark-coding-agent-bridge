@@ -581,9 +581,20 @@ Technical notes: shared-bot instances get `ANTHROPIC_API_KEY` in their systemd e
 | Selected staff, wave 1 (roles from task 0.9) | *TBD, planning figure 10* | Week 12 | Own seat → their assistant |
 | Selected staff, later waves | *TBD, planning figure +20* | Week 14+ | Own seat → their assistant |
 | Executives added later | +1 each | When named | Own seat → their assistant |
-| HR Agent, HR Help, Finance Agent, Ops Agent, Leadership Agent | **0** | — | API key (pooled credits) |
+| HR Agent, HR Help, Finance Agent, Ops Agent, Leadership Agent | **0** (API key), or **1 each** if run on a dedicated seat | — | API key (pooled credits), or a seat set aside for that bot |
 
-**Rule: one seat per human who has a personal assistant (plus admins); zero seats for shared bots.**
+**Rule: one seat per human who has a personal assistant (plus admins). Shared bots default to the API key (zero seats).**
+
+**Shared bots on a subscription seat (option, added 2026-10-21).** A shared bot can instead run on a Team seat **set aside for that bot alone**: never a person's own seat, and never one seat shared by several bots. The containers support both per bot (`lark-bots.sh set-claude <name>`, see [deploy/docker/SETUP.md](../deploy/docker/SETUP.md#creating-a-department-bot)). The trade-off:
+
+| | Dedicated seat | API key |
+|---|---|---|
+| Cost per bot | Fixed USD 25 (Standard) or USD 125 (Premium, 5× usage) | Usage-based, ≈ USD 50–200/month per bot (estimates above), mostly covered by the pooled credits |
+| When usage runs out | The bot returns a usage-limit error to **everyone** until the seat's limit resets (hours; weekly cap too) | Only if credits and auto-reload run out |
+| Fits | Small department, light use (start here, watch for limit errors) | Busy department, HR Help (whole company) |
+| Open point | Team seats are licensed to named members. **Confirm with Anthropic that a seat may be assigned to a shared internal bot** before production | — |
+
+Each seat also adds USD 20 to the pooled API credits, so a seat for a bot isn't entirely lost even if the bot later moves to the API key.
 
 #### Monthly cost by milestone (Sonnet 5.5 default; usage estimates to be validated in the pilot)
 

@@ -1,6 +1,6 @@
 # Setting up Lark bots on a server
 
-Step-by-step setup for running personal Lark assistants in containers, one container per person, on a server that already runs other containers. For how it works and why, see [README.md](README.md).
+Step-by-step setup for running Lark bots in containers, one container per bot, on a server that already runs other containers: **personal assistants** (one per person, acting as that person) and **department bots** (shared by a department, acting only as the bot; see [Creating a department bot](#creating-a-department-bot)). For how it works and why, see [README.md](README.md).
 
 Replace `<user>` and `<server>` with the server's login user and address (the same ones you use with `ssh`), and `ken` with the bot's name.
 
@@ -151,7 +151,101 @@ The other containers' rows and the available memory should look about the same; 
 
 Repeat step 5 with a new name, then step 6. Each bot uses about 70 MB idle and at most 1.5 GB while answering.
 
-Someone who only wants general Claude answers, not their own mail and calendar, doesn't need a bot: the owner of an existing bot sends `/invite user @them` in Lark.
+**Don't `/invite` other people to someone's personal assistant.** A personal assistant acts with its owner's Lark login, so anyone invited would be reading and sending as the owner: their mail, calendar and documents. People who don't need their own assistant use their department's bot instead.
+
+## Creating a department bot
+
+A department bot (for example **HR Agent**) is shared by everyone in a department. It answers from the department's knowledge and acts only as **the bot itself**, never as a person, so nobody's mail or calendar is reachable through it ([plan §7.1](../../docs/department-agents-plan.md)).
+
+Two things decide who can use it, and both must be right:
+
+| | Set by | Must be |
+|---|---|---|
+| **Who can reach the bot in Lark** | The Lark app's **availability** | The department (or the whole company, for a company-wide bot like HR Help) |
+| **Whom the bot answers** | The bot's **mode** | `team`: everyone who can reach it. (`personal` answers only the app's owner and silently ignores everyone else) |
+
+That's why a department bot needs an app **created by the Lark admin**, not from the QR code. A QR-created app belongs to the person who scans it and is normally available only to them, so other members can't find or message the bot even in team mode. `add --mode team` without `--app-id` warns about this.
+
+### 1. Lark admin creates the app
+
+In the Lark Developer Console ([open.larksuite.com/app](https://open.larksuite.com/app)):
+
+1. **Create a custom app** (企业自建应用), e.g. "HR Agent", with an icon and a description staff will recognise. It must be a custom app: Lark's long-connection delivery only works for custom apps.
+2. **Features → Bot**: enable.
+3. **Permissions** (*tenant* / app-identity permissions only). The bot needs these to work at all:
+
+   | What for | Permission |
+   |---|---|
+   | Receive direct messages | `im:message.p2p_msg:readonly` (Read direct messages sent to the bot) |
+   | Receive @-mentions in groups | `im:message.group_at_msg:readonly` (Receive group messages that @ the bot) |
+   | Reply | `im:message:send_as_bot`, and `im:message:update` to edit its replies |
+   | Live-updating reply cards | `cardkit:card:write` |
+   | Read images and files people send | `im:resource` |
+   | "Typing" reaction while it works | `im:message.reactions:write_only` |
+   | Group info and members | `im:chat:read` |
+
+   Add document, wiki, Drive and Base permissions for the knowledge it should read or write (plan §10.2). **Don't** add user-identity permissions such as mail: a department bot never uses them. If something doesn't work later, the bot's log names the missing permission: Lark's error says which scope is required (`./lark-bots.sh logs <name>`, look for `99991672` or `scope`). Add it and publish a new version.
+4. **Events & Callbacks**. These are two separate settings on the same page:
+   - **Event configuration**: subscription mode **Receive events through persistent connection** (长连接, no public URL needed). Add **Receive messages v2.0** (`im.message.receive_v1`). Optionally add **Comment added** (`drive.notice.comment_add_v1`) if the bot should answer @-mentions in document comments.
+   - **Callback configuration**: also set it to **persistent connection**, and add **card.action.trigger** (卡片回传交互). Without this, the bot's buttons (stop, settings, choices) don't respond. Use the new `card.action.trigger`, not the old `card.action.trigger_v1`, which can't use a persistent connection.
+5. **Version management & release → Availability**: choose the department (for HR Help: all members). **Create and publish the version**, then approve it in **Lark Admin → Workplace → App review** if your tenant requires review.
+6. Send the **App ID** (`cli_…`) and **App Secret** to whoever runs `lark-bots.sh`, over a private channel.
+
+Every later change to permissions, events, callbacks or availability needs a **new published version** before it takes effect. Console labels can differ slightly between Lark versions and languages; the codes in brackets are what to search for.
+
+**Who manages the bot.** Settings commands in Lark (`/config`, `/invite`) are for the app's owner, which here is whoever created the app in the console. To let the department's knowledge owner manage it, the app owner DMs the bot `/invite admin @them`.
+
+### 2. Add the bot on the server
+
+```bash
+cd ~/lark-bots
+./lark-bots.sh add hr-agent --app-id cli_xxx --mode team   # paste the App Secret when asked
+```
+
+There's no owner login to connect: `add` skips that step for team bots, and `authorize` refuses them.
+
+> **Coming:** optional per-person Lark sign-in for team bots (each member signs in with their own account, in their own folder) is being built on branch `feat/per-user-login`; see [docs/per-user-login.md](../../docs/per-user-login.md). Until it ships and is switched on for a bot, a team bot acts only as the bot itself.
+
+### 3. Give it its own Claude credential
+
+A department bot serves many people, so don't let it share Claude usage with every other bot or ride on someone's personal sign-in. Both ways below work; you can switch any time.
+
+```bash
+./lark-bots.sh set-claude hr-agent    # choose 1 (subscription token) or 2 (API key)
+./lark-bots.sh restart hr-agent
+```
+
+| | **1. Subscription seat set aside for the bot** | **2. API key** |
+|---|---|---|
+| How | A Team seat used only by this bot; run `claude setup-token` signed in as that seat and paste the token | A key from the Claude Console organisation linked to the Team plan |
+| Cost | Fixed: USD 25/month (Standard) or USD 125 (Premium, 5× the usage) | Per use: the Team plan's monthly API credits first (USD 20 per seat, pooled, up to USD 500), then pay-as-you-go |
+| When usage runs out | The bot answers **everyone** with a usage-limit error until the seat's limit resets (a few hours; there's also a weekly limit) | Only if the credits run out and auto-reload is off; you set the spend limit |
+| Good for | A small department or light use. Start here and watch for limit errors | A busy department, or a company-wide bot like HR Help |
+| Check first | Team seats are licensed to named members. Confirm with Anthropic that a seat may be assigned to a shared internal bot before relying on it in production | Nothing extra |
+
+Don't use a person's own seat for a department bot: their own Claude use and the whole department's would share one limit. `add` and `set-mode` remind you if the bot has no credential of its own. Plan §10.3 has the cost comparison.
+
+### 4. Give it its knowledge and groups
+
+The bot can only read what is shared with it, like a new colleague:
+
+- Add the bot as a member of the department's wiki space, and as a collaborator on the folders, docs and Bases it should use.
+- Add it to the department's group chats (group settings → Bots → Add). In groups, people @-mention it.
+- Share only what **every** member of the department may see. Restricted material (payroll, disciplinary files) stays out; people with access reach it through their own personal assistant.
+
+### 5. Check with a member who isn't the app owner
+
+Have a department member DM the bot `hi`, then ask it something from the department's documents. If they get no reply, see "Department members get no reply" in [When something goes wrong](#when-something-goes-wrong).
+
+### Changing an existing bot's mode
+
+```bash
+./lark-bots.sh set-mode <name> team       # or: personal
+```
+
+It explains what changes, asks to confirm, and restarts the bot. Switching to `team` also **removes the owner's Lark login** from the bot, so nobody can act through it. Switching to `personal` makes the bot answer only the app's owner; run `authorize` afterwards to connect their account.
+
+Converting someone's personal assistant into a department bot isn't recommended: its app was usually created from the QR code (so members can't reach it), and it carried a person's login. Create a fresh department bot as above instead.
 
 ## Day to day
 
@@ -164,6 +258,7 @@ Someone who only wants general Claude answers, not their own mail and calendar, 
 | Restart (also starts a paused bot) | `./lark-bots.sh restart <name>` or `restart all` |
 | Pause a bot, keep everything | `docker stop lark-bot-<name>` |
 | Reconnect the owner's Lark account | `./lark-bots.sh authorize <name>` (or `--domain calendar,mail` for fewer permissions) |
+| Change who a bot answers | `./lark-bots.sh set-mode <name> <personal\|team>` |
 | Update the bridge, Claude Code and lark-cli | `./lark-bots.sh update` (a build: run it at a quiet time) |
 | Remove a bot, keep its data | `./lark-bots.sh remove <name>` |
 | Remove a bot and its data | `./lark-bots.sh remove <name> --purge` |
@@ -208,8 +303,11 @@ docker compose -f bot.yaml --env-file bots/<name>.env run --rm bot claude
 |---|---|
 | One bot's own sign-in | Open Claude Code as above, `/logout`, `/login` with the other account, `/exit`, then `./lark-bots.sh restart <name>` |
 | All bots to one shared account | `./lark-bots.sh set-claude`, then `./lark-bots.sh restart all` (the shared credential takes priority over each bot's own sign-in) |
-| One bot different from the shared one | Put `CLAUDE_CODE_OAUTH_TOKEN=…` (or `ANTHROPIC_API_KEY=…`) in `bots/<name>.claude.env` with mode 600, then restart that bot |
-| Back to each bot's own sign-in | Delete `claude.env` (or `bots/<name>.claude.env`) and restart |
+| One bot different from the shared one (subscription token or API key) | `./lark-bots.sh set-claude <name>`, choose 1 or 2, then `./lark-bots.sh restart <name>`. It writes `bots/<name>.claude.env`, which wins over the shared one |
+| One bot back to its own sign-in while a shared credential exists | `./lark-bots.sh set-claude <name>`, choose 3, then restart it |
+| Everything back to each bot's own sign-in | Delete `claude.env` and every `bots/*.claude.env`, then `./lark-bots.sh restart all` |
+
+`set-claude <name>` needs the current image (its entrypoint keeps only the credential the bot is meant to use): run `./lark-bots.sh update` once after updating these files. Older per-bot files written by hand still work, except a hand-written subscription token can't override a shared **API key**. Rewrite such files with `set-claude <name>`.
 
 ## When something goes wrong
 
@@ -222,12 +320,13 @@ docker compose -f bot.yaml --env-file bots/<name>.env run --rm bot claude
 | Bot shows `Restarting` or `Exited` | `docker logs --tail 50 lark-bot-<name>` |
 | Log says "read-only file system" | Comment out `read_only: true` in `bot.yaml`, `./lark-bots.sh restart <name>`, and report what tried to write |
 | Bot doesn't reply in Lark | `./lark-bots.sh status <name>`, then `./lark-bots.sh logs <name>` while sending it a message |
+| **Department members get no reply** (the owner does) | Have a member DM the bot, then run `docker exec lark-bot-<name> sh -c 'grep -h skip-not-allowed-user ~/.lark-channel/profiles/*/logs/bridge-*.jsonl \| tail -3'`. **A line appears:** the bot received the message but is in `personal` mode: `./lark-bots.sh set-mode <name> team`. **Nothing appears, or members can't find the bot in Lark search:** Lark isn't delivering their messages, because the app's availability doesn't include them. The Lark admin adds the department under Version management → Availability and publishes a new version. A QR-created app: create a department bot instead ([Creating a department bot](#creating-a-department-bot)) |
 | `bash\r: No such file or directory` | A script got Windows line endings: `sed -i 's/\r$//' lark-bots.sh` |
 
 ## Good to know
 
 - **The bots don't touch other containers.** Everything they create is named `lark-bot-*`, they publish no ports, and each has a memory cap (1.5 GB), a CPU cap (1 core, low priority) and rotated logs.
-- **Each bot only reaches its owner's data.** Its owner's Lark login is stored in its own volume, which no other container can see, and the bot answers only its owner.
+- **A personal assistant only reaches its owner's data.** Its owner's Lark login is stored in its own volume, which no other container can see, and the bot answers only its owner. A department bot holds no person's login at all; it sees only what is shared with the bot.
 - **Anyone in the server's `docker` group can read every bot's volume**, including the owners' Lark logins. Keep that group small.
 - **The bot's permissions follow the Lark app.** `authorize` requests every user permission the app enables. An app created by the QR code enables several hundred, including sending mail as the owner; remove the ones the bot doesn't need from the app before authorizing.
 - **Don't change a bot's hostname** in `bot.yaml`. The bridge's encryption key depends on it, and the bot would lose its Lark app secret.

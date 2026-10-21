@@ -40,6 +40,8 @@ chmod +x lark-bots.sh
 ./lark-bots.sh add dept-hr --app-id cli_xxx --mode team
 ```
 
+A department bot (`--mode team`) needs an app the **Lark admin** created with availability set to the department; a QR-created app is normally available only to the person who scanned it, so other members couldn't reach the bot. Give it its own API key too. Step by step: [SETUP.md, Creating a department bot](SETUP.md#creating-a-department-bot).
+
 For a personal assistant, `add` then offers to connect the owner's Lark account: it shows a link and a QR code, the owner opens it, signs in as themselves and approves, and the bot restarts using their identity. To do it later, or again after the owner revokes it:
 
 ```bash
@@ -58,6 +60,7 @@ Then the owner DMs the bot `hi` and `/status`.
 | See all bots | `./lark-bots.sh list` |
 | Follow a log | `./lark-bots.sh logs <name>` |
 | Restart | `./lark-bots.sh restart <name>` or `restart all` |
+| Change who a bot answers | `./lark-bots.sh set-mode <name> <personal\|team>` |
 | Update the bridge, Claude Code and lark-cli | `./lark-bots.sh update` |
 | Remove (keep data / delete data) | `./lark-bots.sh remove <name>` / `remove <name> --purge` |
 | Remove everything | `remove --purge` each bot, then `docker image rm lark-bot:latest` |

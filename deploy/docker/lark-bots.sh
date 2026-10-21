@@ -3,12 +3,15 @@
 # Needs only Docker with Compose and membership of the docker group.
 #
 #   ./lark-bots.sh build                 Build the bot image (once, and after updates)
-#   ./lark-bots.sh set-claude            Save the shared Claude credential ("sign in once")
+#   ./lark-bots.sh set-claude [name]     Save the Claude credential: shared by every bot, or for
+#                                        one bot (subscription token, API key or its own sign-in)
 #   ./lark-bots.sh add <name> [options]  Create a bot: QR code or --app-id, settings, start
 #   ./lark-bots.sh authorize <name> [lark-cli auth login options]
 #                                        Show the link (and QR code) the owner opens to let
 #                                        the bot act as them. Default: every user permission
 #                                        enabled on the app; narrow with e.g. --domain calendar,mail
+#   ./lark-bots.sh set-mode <name> <personal|team>
+#                                        Change who the bot answers (see --mode below)
 #   ./lark-bots.sh status <name>         One bot: container state, resources, owner's Lark account
 #   ./lark-bots.sh list                  Show every bot, its state and memory use
 #   ./lark-bots.sh logs <name>           Follow a bot's log
@@ -20,6 +23,8 @@
 # Options for add:
 #   --app-id <cli_xxx>       Use an existing Lark app (asks for its App Secret).
 #                            Without it a QR code is shown; whoever scans it owns the new app.
+#                            Department (team) bots need an app the Lark admin created with
+#                            availability set to the department; see SETUP.md.
 #   --tenant <lark|feishu>   Tenant for --app-id. Default: lark
 #   --mode <personal|team>   personal: answers only the app owner, may use the owner's Lark
 #                            login. team: anyone may use it, bot identity only. Default: personal
@@ -35,7 +40,8 @@ CFG=/home/bot/.lark-channel/config.json
 step() { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
 warn() { printf '\033[33mwarning:\033[0m %s\n' "$*" >&2; }
 die()  { printf '\033[31merror:\033[0m %s\n' "$*" >&2; exit 1; }
-usage() { sed -n '2,27p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+usage() { sed -n '2,/^$/p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+confirm() { local a; read -rp "$1 [y/N] " a; [[ "$a" =~ ^[Yy] ]]; }
 
 check_name() {
   [[ "${1:-}" =~ ^[a-z][a-z0-9-]{1,30}$ ]] || die "bot name must be 2-31 characters: lowercase letters, digits and '-', starting with a letter"
@@ -69,25 +75,48 @@ cmd_build() {
 }
 
 cmd_set_claude() {
-  step "Shared Claude credential"
+  local name="${1:-}" file="$DIR/claude.env"
+  if [ -n "$name" ]; then
+    check_name "$name"
+    [ -e "$DIR/bots/$name.env" ] || die "no bot named $name"
+    file="$DIR/bots/$name.claude.env"
+    step "Claude credential for $name only"
+  else
+    step "Shared Claude credential"
+    echo "Every bot without a credential of its own uses this one."
+  fi
   cat <<'EOF'
-Every bot without its own sign-in uses this credential.
 
   1  Claude subscription token: run `claude setup-token` once (on your laptop, or here with
      `docker run --rm -it lark-bot:latest claude setup-token`) and paste the token it prints.
-  2  Anthropic API key from the Claude Console.
+     Usage counts against that Claude account's seat limits.
+  2  Anthropic API key from the Claude Console. Usage is paid per use (the Team plan's
+     monthly API credits first).
 EOF
-  local choice var value
-  read -rp "Choose 1 or 2: " choice
+  [ -z "$name" ] || echo "  3  This bot's own Claude Code sign-in (/login inside the bot; see SETUP.md)."
+  local choice var="" kind value=""
+  read -rp "Choose: " choice
   case "$choice" in
-    1) var=CLAUDE_CODE_OAUTH_TOKEN ;;
-    2) var=ANTHROPIC_API_KEY ;;
+    1) var=CLAUDE_CODE_OAUTH_TOKEN; kind=subscription ;;
+    2) var=ANTHROPIC_API_KEY; kind=api-key ;;
+    3) [ -n "$name" ] || die "cancelled"; kind=own ;;
     *) die "cancelled" ;;
   esac
-  read -rsp "Paste it (input hidden): " value; echo
-  [ -n "$value" ] || die "nothing entered"
-  (umask 077; printf '%s=%s\n' "$var" "$value" > "$DIR/claude.env")
-  echo "saved $DIR/claude.env (mode 600). Restart running bots to use it: ./lark-bots.sh restart all"
+  if [ -n "$var" ]; then
+    read -rsp "Paste it (input hidden): " value; echo
+    [ -n "$value" ] || die "nothing entered"
+  fi
+  # LARK_BOT_CLAUDE tells the container which credential to keep if the shared and the
+  # bot's own file set different ones (see entrypoint.sh).
+  (umask 077
+   printf 'LARK_BOT_CLAUDE=%s\n' "$kind" > "$file"
+   [ -z "$var" ] || printf '%s=%s\n' "$var" "$value" >> "$file")
+  echo "saved $file (mode 600)."
+  if [ -n "$name" ]; then
+    echo "Apply it: ./lark-bots.sh restart $name"
+  else
+    echo "Apply it: ./lark-bots.sh restart all"
+  fi
 }
 
 cmd_add() {
@@ -109,6 +138,14 @@ cmd_add() {
   [ ! -e "$DIR/bots/$name.env" ] || die "bot '$name' already exists"
   docker volume inspect "lark-bot-$name-home" >/dev/null 2>&1 \
     && die "a data volume lark-bot-$name-home is left from an earlier bot; remove it with ./lark-bots.sh remove $name --purge"
+
+  if [ "$mode" = team ] && [ -z "$app_id" ]; then
+    warn "a team bot is for a whole department, but an app created from the QR code belongs to the"
+    warn "person who scans it and is normally available only to them: other members may not be"
+    warn "able to find or message the bot. For a department bot, have the Lark admin create the app"
+    warn "with availability set to the department, then run: ./lark-bots.sh add $name --app-id cli_xxx --mode team"
+    confirm "Create a team bot from a QR code anyway?" || die "cancelled"
+  fi
 
   ensure_image
   mkdir -p "$DIR/bots"
@@ -186,10 +223,107 @@ cmd_add() {
 
   echo
   echo "Done: $name"
-  echo "  1. The owner DMs the bot \"hi\" in Lark, then \"/status\"."
+  if [ "$mode" = team ]; then
+    echo "  1. A department member (not the app owner) DMs the bot \"hi\" in Lark: it should reply."
+    echo "     No reply? See \"Department members get no reply\" in SETUP.md."
+    team_credential_hint "$name"
+  else
+    echo "  1. The owner DMs the bot \"hi\" in Lark, then \"/status\"."
+  fi
   if [ "$mode" = personal ] && [ "$authorized" -eq 0 ]; then
     echo "  2. To connect their own Lark account: ./lark-bots.sh authorize $name"
     echo "     (or they ask the bot something personal in a DM and approve the link it sends)."
+  fi
+}
+
+# A team bot serves many people. Sharing one Claude credential with every other bot means its
+# whole department's use counts against the same limits; nudge towards its own credential.
+team_credential_hint() {
+  local name="$1"
+  [ -f "$DIR/bots/$name.claude.env" ] && return
+  warn "$name has no Claude credential of its own, so its whole department's use counts against"
+  warn "the shared one (or a personal sign-in). Give it its own: a subscription seat set aside for"
+  warn "the bot, or an API key: ./lark-bots.sh set-claude $name (see SETUP.md, department bots)"
+}
+
+# The bot's mode from its config, read in the running container
+profile_mode() {
+  local name="$1"
+  docker exec "lark-bot-$name" node -e '
+    const c = require("/home/bot/.lark-channel/config.json");
+    console.log((c.profiles[process.argv[1]] || {}).mode || "personal");' "$name"
+}
+
+cmd_set_mode() {
+  local name="${1:-}" mode="${2:-}"
+  check_name "$name"
+  [[ "$mode" =~ ^(personal|team)$ ]] || die "usage: ./lark-bots.sh set-mode <name> <personal|team>"
+  [ -e "$DIR/bots/$name.env" ] || die "no bot named $name"
+  local c="lark-bot-$name"
+  [ "$(docker inspect -f '{{.State.Running}}' "$c" 2>/dev/null)" = true ] \
+    || die "$c is not running; start it with ./lark-bots.sh restart $name"
+
+  local current owner=""
+  current="$(profile_mode "$name")" || die "couldn't read $name's settings"
+  [ "$current" != "$mode" ] || { echo "$name is already a $mode bot"; return; }
+
+  step "Switching $name from $current to $mode"
+  if [ "$mode" = team ]; then
+    owner="$(owner_auth "$name" | cut -f1)" || owner=""
+    cat <<EOF
+In team mode:
+  - Anyone who can reach the bot in Lark can use it. The Lark app's availability decides who
+    that is: an app created from the QR code is normally available only to the person who
+    scanned it, so department members may still not see the bot.
+  - The bot only ever uses its own Lark identity, never a person's.
+EOF
+    [ -z "$owner" ] || cat <<EOF
+  - It is connected to $owner's Lark account. That login will be removed, so nobody else can
+    ever act through it. Switching back to personal later needs ./lark-bots.sh authorize again.
+EOF
+    cat <<EOF
+
+For a department bot, a new bot on an app the Lark admin created is cleaner than converting
+someone's personal assistant: see "Creating a department bot" in SETUP.md.
+EOF
+  else
+    cat <<EOF
+In personal mode the bot answers only the Lark app's owner (shown in the Lark developer
+console) and silently ignores everyone else. The owner can then connect their own Lark
+account with ./lark-bots.sh authorize $name.
+EOF
+  fi
+  confirm "Switch $name to $mode?" || die "cancelled"
+
+  docker exec "$c" node -e '
+    const fs = require("fs");
+    const [file, name, mode] = process.argv.slice(1);
+    const cfg = JSON.parse(fs.readFileSync(file, "utf8"));
+    const p = cfg.profiles && cfg.profiles[name];
+    if (!p) { console.error(`profile ${name} not found in ${file}`); process.exit(1); }
+    p.mode = mode;
+    fs.writeFileSync(file + ".tmp", JSON.stringify(cfg, null, 2) + "\n", { mode: 0o600 });
+    fs.renameSync(file + ".tmp", file);
+  ' "$CFG" "$name" "$mode"
+
+  if [ -n "$owner" ]; then
+    bot_lark_cli "$name" auth logout >/dev/null 2>&1 || true
+    if owner_auth "$name" >/dev/null 2>&1; then
+      warn "couldn't remove $owner's Lark login. A team bot must not hold one: the agent could"
+      warn "be talked into using it. Remove this bot (./lark-bots.sh remove $name --purge) and"
+      warn "create the department bot fresh, as in SETUP.md \"Creating a department bot\"."
+    else
+      echo "removed $owner's Lark login"
+    fi
+  fi
+
+  # The bridge reads the mode at start; in team mode it also switches lark-cli to bot-only.
+  bot_compose "$name" up -d --force-recreate >/dev/null 2>&1
+  echo "restarted: $name is now a $mode bot"
+  if [ "$mode" = team ]; then
+    team_credential_hint "$name"
+  else
+    echo "Next: ./lark-bots.sh authorize $name"
   fi
 }
 
@@ -224,9 +358,7 @@ cmd_authorize() {
   done
 
   local mode
-  mode="$(docker exec "$c" node -e '
-    const c = require("/home/bot/.lark-channel/config.json");
-    console.log((c.profiles[process.argv[1]] || {}).mode || "personal");' "$name")"
+  mode="$(profile_mode "$name")"
   [ "$mode" != team ] \
     || die "$name is a team bot: it only ever uses its own Lark identity, so it can't act as a person"
 
@@ -437,9 +569,10 @@ docker compose version >/dev/null 2>&1 || die "docker compose is not available"
 
 case "${1:-}" in
   build)      shift; cmd_build ;;
-  set-claude) shift; cmd_set_claude ;;
+  set-claude) shift; cmd_set_claude "$@" ;;
   add)        shift; cmd_add "$@" ;;
   authorize)  shift; cmd_authorize "$@" ;;
+  set-mode)   shift; cmd_set_mode "$@" ;;
   status)     shift; cmd_status "$@" ;;
   list)       shift; cmd_list ;;
   logs)       shift; cmd_logs "$@" ;;
