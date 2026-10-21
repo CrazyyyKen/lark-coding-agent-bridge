@@ -92,3 +92,12 @@ describe('createQuickReplyFilter', () => {
     expect(shown).toBe('Draft ready.\nThanks!');
   });
 });
+
+describe('findQuickReplies limit (/config)', () => {
+  const many = '```quick-replies\na\nb\nc\nd\ne\nf\ng\nh\n```';
+  it('uses the configured limit, and 0 turns the buttons off', () => {
+    expect(findQuickReplies(many, 3)).toEqual(['a', 'b', 'c']);
+    expect(findQuickReplies(many, 8)).toHaveLength(8);
+    expect(findQuickReplies(many, 0)).toEqual([]);
+  });
+});

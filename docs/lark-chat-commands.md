@@ -26,7 +26,7 @@ Source of truth: the `handlers` table in [src/commands/index.ts](../src/commands
 
 | Command | Who | What it does |
 |---|---|---|
-| `/config` | admin | Open the settings card: **model**, run mode (personal / team), reply style, tool-call display, progress messages, concurrency, default timeout, meeting agent, access lists and lark-cli identity policy. |
+| `/config` | admin | Open the settings card: **model**, run mode (personal / team), reply style, tool-call display, progress messages, **quick-reply buttons** (Off or up to 1–10, default 6), concurrency, default timeout, meeting agent, access lists and lark-cli identity policy. |
 | `/invite user @someone` | admin | Let someone DM the bot. |
 | `/invite admin @someone` | admin | Make someone an admin (admins can also DM the bot). |
 | `/invite group` | admin | Let the bot answer in this group. |
@@ -121,6 +121,7 @@ When the bot needs you to choose (send a draft or not, what to do after an inbox
 
 - Tapping a button is the same as typing that text as your next message. You can always type instead.
 - Only the person the bot was answering can tap them; in a group, other people's taps do nothing. Each set of buttons can be answered once, and they expire after a day or when the bot restarts.
+- The admin sets how many buttons a reply may have in `/config` → **Quick-reply buttons**: Off, or 1–10 (default 6).
 - A button that starts with `/` (like `/schedule list` or `/login`) runs that command.
 - `/help` also has buttons: **📅 My scheduled tasks**, and on team bots **🔑 Sign in** and **👤 Who am I**.
 

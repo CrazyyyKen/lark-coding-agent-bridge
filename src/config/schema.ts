@@ -122,6 +122,11 @@ export interface AppPreferences {
    */
   cotMessages?: CotMessagesMode | 'on' | 'simple';
   /**
+   * Most quick-reply buttons shown under one reply (the agent's
+   * ```quick-replies block). 0 turns them off. Default 6, range 0-10.
+   */
+  quickReplyLimit?: number;
+  /**
    * Cap on concurrent claude runs across all chats / topics. Excess runs
    * queue FIFO. Default 10. Mostly relevant for topic groups where each
    * topic can spawn its own run; capping protects RAM / token spend.
@@ -224,6 +229,16 @@ export function getCotMessages(cfg: AppConfig): CotMessagesMode {
   if (raw === 'brief' || raw === 'simple') return 'brief';
   if (raw === 'detailed' || raw === 'on') return 'detailed';
   return 'off';
+}
+
+export const DEFAULT_QUICK_REPLY_LIMIT = 6;
+export const MAX_QUICK_REPLY_LIMIT = 10;
+
+/** Resolve the quick-reply button limit: default 6, 0 = off, at most 10. */
+export function getQuickReplyLimit(cfg: AppConfig): number {
+  const raw = cfg.preferences?.quickReplyLimit;
+  if (typeof raw !== 'number' || !Number.isFinite(raw)) return DEFAULT_QUICK_REPLY_LIMIT;
+  return Math.min(MAX_QUICK_REPLY_LIMIT, Math.max(0, Math.floor(raw)));
 }
 
 /** Resolve the max-concurrent-runs preference with default + sanity clamp. */

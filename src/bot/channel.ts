@@ -37,6 +37,8 @@ import {
   getMessageReplyMode,
   getRunIdleTimeoutMs,
   getShowToolCalls,
+  DEFAULT_QUICK_REPLY_LIMIT,
+  getQuickReplyLimit,
 } from '../config/schema';
 import { perUserLoginEnabled } from '../config/profile-schema';
 import { resolveAppSecret } from '../config/secret-resolver';
@@ -1190,12 +1192,21 @@ async function runAgentBatch(deps: RunBatchDeps): Promise<void> {
   const prevModel = lastRunModelByScope.get(scope);
   const modelSwitched = prevModel !== undefined && prevModel !== modelSelection;
   lastRunModelByScope.set(scope, modelSelection);
-  const extraInstructions = modelSwitched
-    ? [
-        `用户刚把本会话使用的模型切换为「${modelLabel(agentKind, modelPref)}」。` +
-          '之前的对话里可能提到别的模型,请以当前模型为准;若被问到你用的是什么模型,据此回答。',
-      ]
-    : undefined;
+  const instructions: string[] = [];
+  if (modelSwitched) {
+    instructions.push(
+      `用户刚把本会话使用的模型切换为「${modelLabel(agentKind, modelPref)}」。` +
+        '之前的对话里可能提到别的模型,请以当前模型为准;若被问到你用的是什么模型,据此回答。',
+    );
+  }
+  // The system prompt says "up to 6 quick replies"; say so when /config differs.
+  const quickReplyLimit = getQuickReplyLimit(controls.cfg);
+  if (quickReplyLimit === 0) {
+    instructions.push('这个 bot 关闭了快捷回复按钮：不要在回复里写 quick-replies 代码块，需要用户选择时直接用文字列出选项。');
+  } else if (quickReplyLimit !== DEFAULT_QUICK_REPLY_LIMIT) {
+    instructions.push(`这个 bot 的快捷回复按钮上限是 ${quickReplyLimit} 个（不是 6 个）。`);
+  }
+  const extraInstructions = instructions.length > 0 ? instructions : undefined;
 
   const prompt = buildPrompt(
     batch,
@@ -1586,6 +1597,7 @@ async function runAgentBatch(deps: RunBatchDeps): Promise<void> {
       requester: lastMsg,
       text: replyText,
       quickReplies,
+      quickReplyLimit,
       scheduler: controls.scheduler,
     }).catch((err) => log.warn('reply-buttons', 'offer-failed', { err: String(err) }));
   }
@@ -1604,6 +1616,8 @@ async function offerReplyButtons(input: {
   requester: NormalizedMessage;
   text: Promise<string>;
   quickReplies: QuickReplies;
+  /** From /config; 0 = no quick-reply buttons. */
+  quickReplyLimit: number;
   scheduler: Scheduler | undefined;
 }): Promise<void> {
   const text = await input.text;
@@ -1616,7 +1630,7 @@ async function offerReplyButtons(input: {
       text,
     }).catch((err) => log.warn('scheduler', 'suggestion-failed', { err: String(err) }));
   }
-  const options = findQuickReplies(text);
+  const options = findQuickReplies(text, input.quickReplyLimit);
   if (options.length === 0) return;
   const offer = input.quickReplies.offer({
     requesterId: input.requester.senderId,

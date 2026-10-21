@@ -28,12 +28,14 @@ Automated tests already cover the logic: parsing, the requester-only and single-
 | 2.14, 3.9 | Wei Leong: the real weekday 08:30 triage (set it up from the card), drafts only, nothing on Sat/Sun |
 | 8.6, 2.10, 2.16c | Any team bot, in a group or with two accounts: someone else's tap does nothing |
 
-**Blocked until set up:**
+**Unblocked since (per-person sign-in turned on for `gdex-ai` at 17:21; `joeee` and `ken` set to full access):**
 
-| Rows | Needs |
+| Rows | Where |
 |---|---|
-| 1.x, 8.11–8.15, 2.20–2.22 | A team bot with `team.perUserLogin: true`. `gdex-ai` doesn't have it turned on (see [per-user-login.md](per-user-login.md#turning-it-on)). |
-| 3.4, 3.5 on `joeee` / `ken` | They still have `workspace` access (created before the full-access default): `./lark-bots.sh set-access <name> full` if wanted. |
+| 1.1–1.28, 8.11–8.15, 2.20–2.22 | `gdex-ai`, with two member accounts (A and B). Everyone who has DMed it before also gets the sign-in card on their next DM. |
+| 3.4, 3.5 | `joeee` and `ken`: memory and multi-step commands |
+
+**After the next deploy (branch `feat/config-quick-replies`):** 8.20–8.22 (the button limit in `/config`).
 
 ## 0. Before you start
 
@@ -266,6 +268,14 @@ Do these on a phone as well as desktop: the point is fewer taps on mobile.
 | 8.17 | A scheduled task runs | It starts with a **⏰ Scheduled task** card with **Run again** and **Pause schedule**; the answer appears under it. | |
 | 8.18 | Tap **Pause schedule** | Card shows **Resume schedule**; `/schedule list` shows it paused; it doesn't run at the next time. | |
 | 8.19 | Tap **Resume schedule**, then **Run again** | Resumed with a new next run; Run again runs it now. | |
+
+### Button limit in `/config`
+
+| # | Do | Expect | ✓ / notes |
+|---|---|---|---|
+| 8.20 | `/config` → **Quick-reply buttons** = 3, save; ask for something with several choices (e.g. a triage) | At most 3 buttons; the saved card shows "up to 3". | |
+| 8.21 | Set it to **Off**, ask for a draft | No buttons; the bot lists the choices as text ("reply send / edit / cancel"). Typing still works. | |
+| 8.22 | Set it back to **6 (default)** | Back to normal; other `/config` settings unchanged. | |
 
 ## Note on full access
 

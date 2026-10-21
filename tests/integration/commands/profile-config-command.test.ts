@@ -113,6 +113,21 @@ describe('profile-aware account and config commands', () => {
     expect(cleared.profiles.claude?.preferences.model).toBeUndefined();
   });
 
+  it('persists the quick-reply button limit, including Off, and ignores out-of-range values', async () => {
+    vi.useFakeTimers();
+    const h = await createHarness();
+
+    await h.command('/config submit', { message_reply: 'text', quick_reply_limit: '3' });
+    await waitForRoot(h.rootDir, (c) => c.profiles.claude?.preferences.quickReplyLimit === 3);
+
+    await h.command('/config submit', { message_reply: 'text', quick_reply_limit: '0' });
+    await waitForRoot(h.rootDir, (c) => c.profiles.claude?.preferences.quickReplyLimit === 0);
+
+    await h.command('/config submit', { message_reply: 'text', quick_reply_limit: '99', model: 'claude-opus-4-8' });
+    const kept = await waitForRoot(h.rootDir, (c) => c.profiles.claude?.preferences.model === 'claude-opus-4-8');
+    expect(kept.profiles.claude?.preferences.quickReplyLimit).toBe(0);
+  });
+
   it('keeps the current message reply mode when the config submit payload omits it', async () => {
     vi.useFakeTimers();
     const h = await createHarness({

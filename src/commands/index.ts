@@ -38,6 +38,8 @@ import {
   getRequireMentionInGroup,
   getRunIdleTimeoutMs,
   getShowToolCalls,
+  getQuickReplyLimit,
+  MAX_QUICK_REPLY_LIMIT,
 } from '../config/schema';
 import type {
   LarkCliIdentityPreset,
@@ -1791,6 +1793,7 @@ async function showConfigForm(ctx: CommandContext): Promise<void> {
     messageReply: getMessageReplyMode(ctx.controls.cfg),
     showToolCalls: getShowToolCalls(ctx.controls.cfg),
     cotMessages: getCotMessages(ctx.controls.cfg),
+    quickReplyLimit: getQuickReplyLimit(ctx.controls.cfg),
     maxConcurrentRuns: getMaxConcurrentRuns(ctx.controls.cfg),
     runIdleTimeoutMinutes: ms ? Math.round(ms / 60_000) : 0,
     requireMentionInGroup: getRequireMentionInGroup(ctx.controls.cfg),
@@ -1861,6 +1864,16 @@ async function submitConfig(ctx: CommandContext): Promise<void> {
         : rawCotMessages === 'off'
           ? 'off'
           : getCotMessages(ctx.controls.cfg);
+  // Parse quick_reply_limit (0 = off, 1-10); anything else keeps the current value.
+  const rawQuickReplyLimit = String(fv.quick_reply_limit ?? '').trim();
+  const parsedQuickReplyLimit = Number(rawQuickReplyLimit);
+  const quickReplyLimit =
+    rawQuickReplyLimit !== '' &&
+    Number.isInteger(parsedQuickReplyLimit) &&
+    parsedQuickReplyLimit >= 0 &&
+    parsedQuickReplyLimit <= MAX_QUICK_REPLY_LIMIT
+      ? parsedQuickReplyLimit
+      : getQuickReplyLimit(ctx.controls.cfg);
   // Parse max_concurrent_runs; invalid input falls back to current value.
   const rawMaxCC = String(fv.max_concurrent_runs ?? '').trim();
   const parsedMaxCC = Number(rawMaxCC);
@@ -1939,6 +1952,7 @@ async function submitConfig(ctx: CommandContext): Promise<void> {
       messageReplyMigrated: true,
       showToolCalls,
       cotMessages,
+      quickReplyLimit,
       maxConcurrentRuns,
       runIdleTimeoutMinutes,
       requireMentionInGroup,
@@ -1985,6 +1999,7 @@ async function submitConfig(ctx: CommandContext): Promise<void> {
       messageReply,
       showToolCalls,
       cotMessages,
+      quickReplyLimit,
       maxConcurrentRuns,
       runIdleTimeoutMinutes,
       requireMentionInGroup,
@@ -2004,6 +2019,7 @@ async function submitConfig(ctx: CommandContext): Promise<void> {
         messageReply,
         showToolCalls,
         cotMessages,
+        quickReplyLimit,
         maxConcurrentRuns,
         runIdleTimeoutMinutes,
         requireMentionInGroup,

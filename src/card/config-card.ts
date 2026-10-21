@@ -1,7 +1,15 @@
 import { modelLabel, supportedModels } from '../agent/models';
 import type { KnownChat } from '../bot/lark-info';
 import type { AgentKind, LarkCliIdentityPreset, ProfileMode } from '../config/profile-schema';
-import type { CotMessagesMode, MessageReplyMode } from '../config/schema';
+import {
+  DEFAULT_QUICK_REPLY_LIMIT,
+  MAX_QUICK_REPLY_LIMIT,
+  type CotMessagesMode,
+  type MessageReplyMode,
+} from '../config/schema';
+
+/** Choices for the quick-reply button limit select: Off, 1-10. */
+const QUICK_REPLY_LIMIT_CHOICES = Array.from({ length: MAX_QUICK_REPLY_LIMIT + 1 }, (_, n) => n);
 
 export interface ConfigFormOpts {
   /** Profile's agent kind — decides which model catalog the picker shows. */
@@ -13,6 +21,8 @@ export interface ConfigFormOpts {
   messageReply: MessageReplyMode;
   showToolCalls: boolean;
   cotMessages: CotMessagesMode;
+  /** Most quick-reply buttons under a reply; 0 = off. */
+  quickReplyLimit: number;
   maxConcurrentRuns: number;
   /** 0 means "disabled". */
   runIdleTimeoutMinutes: number;
@@ -227,6 +237,25 @@ export function configFormCard(opts: ConfigFormOpts): object {
             {
               tag: 'markdown',
               content:
+                '\n**Quick-reply buttons**\n' +
+                '_When the bot needs a choice (send a draft, next steps after a triage), it can show the options as buttons under its reply_\n' +
+                '_Most buttons per reply: default 6. Off: the bot lists the options as text instead_',
+            },
+            {
+              tag: 'select_static',
+              name: 'quick_reply_limit',
+              initial_option: String(opts.quickReplyLimit),
+              options: QUICK_REPLY_LIMIT_CHOICES.map((n) => ({
+                text: {
+                  tag: 'plain_text',
+                  content: n === 0 ? 'Off' : n === DEFAULT_QUICK_REPLY_LIMIT ? `${n} (default)` : String(n),
+                },
+                value: String(n),
+              })),
+            },
+            {
+              tag: 'markdown',
+              content:
                 '\n**Max concurrent runs**\n' +
                 '_How many agent processes can run at once across the bot (mainly matters for topic groups with many topics in parallel)_\n' +
                 '_Default 10, range 1-50. Extra requests queue FIFO_',
@@ -352,6 +381,7 @@ export function configSavedCard(opts: ConfigFormOpts): object {
             `**Reply style**: ${replyLabel}\n` +
             `**Tool calls**: \`${opts.showToolCalls ? 'show' : 'hide'}\`\n` +
             `**COT progress messages**: \`${cotLabel}\`\n` +
+            `**Quick-reply buttons**: \`${opts.quickReplyLimit === 0 ? 'Off' : `up to ${opts.quickReplyLimit}`}\`\n` +
             `**Max concurrent runs**: \`${opts.maxConcurrentRuns}\`\n` +
             `**Run inactivity check**: \`${opts.runIdleTimeoutMinutes > 0 ? `${opts.runIdleTimeoutMinutes} min` : 'Off'}\`\n` +
             `**Require @ bot in groups**: \`${opts.requireMentionInGroup ? 'Yes' : 'No'}\`\n\n` +

@@ -54,15 +54,16 @@ export function createQuickReplyFilter(): (delta: string) => string {
   };
 }
 
-/** The options listed in the reply's quick-reply blocks, deduped and capped. */
-export function findQuickReplies(text: string): string[] {
+/** The options listed in the reply's quick-reply blocks, deduped and capped at `limit`. */
+export function findQuickReplies(text: string, limit = MAX_QUICK_REPLIES): string[] {
+  if (limit <= 0) return [];
   const found: string[] = [];
   for (const match of text.matchAll(BLOCK)) {
     for (const raw of (match[1] ?? '').split('\n')) {
       const line = raw.replace(/^\s*(?:[-*]|\d+[.)])\s+/, '').trim();
       if (!line || line.startsWith('```') || line.length > MAX_QUICK_REPLY_CHARS) continue;
       if (!found.includes(line)) found.push(line);
-      if (found.length >= MAX_QUICK_REPLIES) return found;
+      if (found.length >= limit) return found;
     }
   }
   return found;
