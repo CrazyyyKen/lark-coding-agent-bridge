@@ -121,7 +121,7 @@ describe('user-im lark-cli helpers', () => {
     const page = await listUserChats(ctx, {}, exec);
     expect(page.chats).toEqual([
       { id: 'oc_1', name: '产品群' },
-      { id: 'oc_2', name: '(无名群)' },
+      { id: 'oc_2', name: '(unnamed group)' },
       { id: 'oc_3', name: '技术群' },
     ]);
     expect(page.nextPageToken).toBe('tok-2');

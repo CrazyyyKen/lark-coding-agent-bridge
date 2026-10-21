@@ -44,7 +44,7 @@ describe('/status and /doctor diagnostics', () => {
     release();
     expect(h.agent.runOptions).toHaveLength(1);
     const status = JSON.stringify(lastContent(h.channel));
-    expect(status).toContain('旧 cwd');
+    expect(status).toContain('old cwd');
     expect(status).toContain('active run');
     expect(status).toContain('active scopes');
     expect(status).toContain('1/1 active');
@@ -62,7 +62,7 @@ describe('/status and /doctor diagnostics', () => {
     await expect(h.run('/doctor')).resolves.toBe(true);
 
     expect(h.agent.runOptions).toHaveLength(0);
-    expect(lastMarkdownOrText(h.channel)).toContain('未设置工作目录');
+    expect(lastMarkdownOrText(h.channel)).toContain('No workspace set');
     expect(lastMarkdownOrText(h.channel)).toContain('self-check');
   });
 

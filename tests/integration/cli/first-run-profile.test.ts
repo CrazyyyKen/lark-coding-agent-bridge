@@ -101,7 +101,7 @@ describe('first-run profile bootstrap', () => {
         accounts: { app: { id: 'cli_claude', secret: '${APP_SECRET}', tenant: 'feishu' } },
         workspace: file,
       }),
-    ).rejects.toThrow(/路径不是目录/);
+    ).rejects.toThrow(/Path is not a directory/);
   });
 
   it('accepts a requested bootstrap workspace without requiring git', async () => {

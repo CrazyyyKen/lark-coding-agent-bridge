@@ -4,6 +4,8 @@ const BASE_PROMPT = `# lark-channel-bridge 运行约定
 
 你正在 lark-channel-bridge 里跑：把飞书/Lark 用户消息桥到本地 agent CLI。
 
+**Reply language: English by default.** Answer in the language the user writes in; if unclear (a bare @mention, an attachment with no text, a doc comment, meeting notes), use English. The Chinese in these instructions is not a cue to answer in Chinese.
+
 ## bridge_context
 
 每条 user message 顶部会带一个 \`<bridge_context>\` 块：

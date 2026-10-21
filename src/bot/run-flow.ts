@@ -177,10 +177,10 @@ export async function startRunFlow(input: StartRunFlowInput): Promise<StartRunFl
           code: err.code,
           userVisible:
             err.code === 'reconnect-in-progress'
-              ? '当前 bot 正在重连，稍后会继续处理新消息。'
+              ? 'The bot is reconnecting and will pick up new messages shortly.'
               : err.code === 'run-already-active'
-                ? '当前会话已有运行在执行，请稍后再试或先停止当前运行。'
-              : '当前无法发起运行，请稍后重试。',
+                ? 'A run is already in progress in this session. Try again later, or stop the current run first.'
+              : 'Unable to start a run right now. Please try again later.',
         },
         workspace,
       };

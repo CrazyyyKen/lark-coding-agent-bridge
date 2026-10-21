@@ -242,7 +242,7 @@ function normalizeThread(input: unknown): CodexThreadHistoryEntry | undefined {
   return {
     threadId,
     ...(stringValue(raw.sessionId) ? { sessionId: stringValue(raw.sessionId) } : {}),
-    preview: normalizeSessionPreview(stringValue(raw.preview) ?? '') || '(空会话)',
+    preview: normalizeSessionPreview(stringValue(raw.preview) ?? '') || '(empty session)',
     cwd,
     createdAtMs: Math.round((createdAt ?? 0) * 1000),
     updatedAtMs: Math.round((updatedAt ?? 0) * 1000),

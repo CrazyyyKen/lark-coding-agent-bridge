@@ -26,20 +26,26 @@ export interface ModelOption {
  * Opus for planning and Sonnet for execution).
  */
 const CLAUDE_MODELS: ModelOption[] = [
-  { value: DEFAULT_MODEL, label: '跟随默认（不指定）' },
-  { value: 'claude-opus-5-5', label: 'Opus 5.5（最新）' },
+  { value: DEFAULT_MODEL, label: 'Use default (not set)' },
+  // Not covered by Team/Pro seats: a run fails unless the account has usage credits.
+  { value: 'claude-fable-5-1', label: 'Fable 5.1 (needs extra usage credits)' },
+  { value: 'claude-opus-5-5', label: 'Opus 5.5 (latest)' },
   { value: 'claude-opus-4-8', label: 'Opus 4.8' },
   { value: 'claude-opus-4-7', label: 'Opus 4.7' },
-  { value: 'claude-sonnet-5-5', label: 'Sonnet 5.5（最新）' },
+  { value: 'claude-sonnet-5-5', label: 'Sonnet 5.5 (latest)' },
   { value: 'claude-sonnet-5', label: 'Sonnet 5' },
   { value: 'claude-sonnet-4-6', label: 'Sonnet 4.6' },
-  { value: 'claude-haiku-4-5', label: 'Haiku 4.5（最新）' },
-  { value: 'opusplan', label: 'Opus Plan（规划用 Opus，执行用 Sonnet）' },
+  { value: 'claude-haiku-5-5', label: 'Haiku 5.5 (latest)' },
+  { value: 'claude-haiku-4-5', label: 'Haiku 4.5' },
+  { value: 'opusplan', label: 'Opus Plan (Opus plans, Sonnet executes)' },
 ];
 
 /** Codex CLI models. Forwarded to `codex exec --model`. */
 const CODEX_MODELS: ModelOption[] = [
-  { value: DEFAULT_MODEL, label: '跟随默认（不指定）' },
+  { value: DEFAULT_MODEL, label: 'Use default (not set)' },
+  { value: 'gpt-6.1-sol', label: 'GPT-6.1 Sol (latest)' },
+  { value: 'gpt-6-sol', label: 'GPT-6 Sol' },
+  { value: 'gpt-6-luna', label: 'GPT-6 Luna' },
   { value: 'gpt-5-codex', label: 'GPT-5 Codex' },
   { value: 'gpt-5', label: 'GPT-5' },
   { value: 'o3', label: 'o3' },

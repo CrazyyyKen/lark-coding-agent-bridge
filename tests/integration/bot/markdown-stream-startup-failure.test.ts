@@ -97,7 +97,7 @@ describe('markdown stream startup failures', () => {
         path: { message_id: 'om_first', reaction_id: 'reaction_1' },
       }),
     );
-    expect(lastMarkdown(h.channel)).toContain('agent 失败');
+    expect(lastMarkdown(h.channel)).toContain('Agent failed');
     expect(lastMarkdown(h.channel)).toContain('codex exited with code 1');
   });
 
@@ -114,7 +114,7 @@ describe('markdown stream startup failures', () => {
     await h.channel.handlers.message?.(message('om_second', 'second'));
     await waitFor(() => h.agent.runOptions.length === 2, 1000);
 
-    expect(lastMarkdown(h.channel)).toContain('agent 失败');
+    expect(lastMarkdown(h.channel)).toContain('Agent failed');
 
     reaction.resolve({ data: { reaction_id: 'reaction_1' } });
     await waitFor(() => h.channel.rawClient.im.v1.messageReaction.delete.mock.calls.length > 0);

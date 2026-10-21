@@ -41,7 +41,7 @@ describe('unified access gates', () => {
     await Promise.all([sessions.flush(), workspaces.flush()]);
 
     await expect(realpath(root)).resolves.toBe(workspaces.cwdFor('chat-1'));
-    expect(lastMarkdown(channel)).toContain('已切换 cwd');
+    expect(lastMarkdown(channel)).toContain('Switched cwd');
   });
 
   it('denies directory commands for non-owner users when admins is empty', async () => {
@@ -66,7 +66,7 @@ describe('unified access gates', () => {
     await tryHandleCommand(ctx);
 
     expect(workspaces.cwdFor('chat-1')).toBeUndefined();
-    expect(lastMarkdown(channel)).toContain('仅管理员可用');
+    expect(lastMarkdown(channel)).toContain('admins only');
   });
 
   it('does not apply IM access gates to cloud-doc comment mentions', async () => {

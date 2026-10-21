@@ -46,18 +46,18 @@ describe('Bridge command contracts', () => {
     await writeFile(file, 'not a directory', 'utf8');
 
     await expect(h.run('/cd relative')).resolves.toBe(true);
-    expect(lastMarkdown(h.channel)).toContain('绝对路径');
+    expect(lastMarkdown(h.channel)).toContain('absolute path');
 
     await expect(h.run(`/cd ${file}`)).resolves.toBe(true);
-    expect(lastMarkdown(h.channel)).toContain('路径不是目录');
+    expect(lastMarkdown(h.channel)).toContain('Path is not a directory');
 
     await expect(h.run(`/cd ${target}`)).resolves.toBe(true);
-    expect(lastMarkdown(h.channel)).toContain('已切换 cwd');
+    expect(lastMarkdown(h.channel)).toContain('Switched cwd');
     expect(lastMarkdown(h.channel)).not.toContain('允许访问目录');
     await expect(realpath(target)).resolves.toBe(h.workspaces.cwdFor('chat-1'));
 
     await expect(h.run(`/cd ${h.tmp.workspace}`)).resolves.toBe(true);
-    expect(lastMarkdown(h.channel)).toContain('已切换 cwd');
+    expect(lastMarkdown(h.channel)).toContain('Switched cwd');
     await expect(realpath(h.tmp.workspace)).resolves.toBe(h.workspaces.cwdFor('chat-1'));
   });
 
@@ -68,14 +68,14 @@ describe('Bridge command contracts', () => {
 
     h.workspaces.setCwd('chat-a', h.tmp.workspace);
     await expect(h.run('/ws save main', { scope: 'chat-a', chatId: 'chat-a' })).resolves.toBe(true);
-    expect(lastMarkdown(h.channel)).toContain('工作目录别名已保存');
+    expect(lastMarkdown(h.channel)).toContain('Workspace alias saved');
 
     h.workspaces.setCwd('chat-b', alternate);
     await expect(h.run('/ws', { scope: 'chat-b', chatId: 'chat-b' })).resolves.toBe(true);
     expect(JSON.stringify(lastContent(h.channel))).not.toContain('main');
 
     await expect(h.run('/ws use main', { scope: 'chat-b', chatId: 'chat-b' })).resolves.toBe(true);
-    expect(lastMarkdown(h.channel)).toContain('未找到工作目录别名');
+    expect(lastMarkdown(h.channel)).toContain('Workspace alias not found');
     expect(h.workspaces.cwdFor('chat-b')).toBe(alternate);
   });
 
@@ -89,11 +89,11 @@ describe('Bridge command contracts', () => {
     expect(JSON.stringify(lastContent(h.channel))).toContain('legacy');
 
     await expect(h.run('/ws use legacy')).resolves.toBe(true);
-    expect(lastMarkdown(h.channel)).toContain('已切换到 `legacy`');
+    expect(lastMarkdown(h.channel)).toContain('Switched to `legacy`');
     await expect(realpath(legacy)).resolves.toBe(h.workspaces.cwdFor('chat-1'));
 
     await expect(h.run('/ws remove legacy')).resolves.toBe(true);
-    expect(lastMarkdown(h.channel)).toContain('已删除工作目录别名');
+    expect(lastMarkdown(h.channel)).toContain('Workspace alias removed');
     expect(h.workspaces.getNamed('legacy')).toBeUndefined();
   });
 
@@ -106,7 +106,7 @@ describe('Bridge command contracts', () => {
     await expect(h.run('/ws save main')).resolves.toBe(true);
     await expect(h.run('/ws remove main')).resolves.toBe(true);
 
-    expect(lastMarkdown(h.channel)).toContain('已删除工作目录别名');
+    expect(lastMarkdown(h.channel)).toContain('Workspace alias removed');
     expect(h.workspaces.getNamed('main')).toBe(legacy);
 
     await expect(h.run('/ws use main')).resolves.toBe(true);
@@ -117,10 +117,10 @@ describe('Bridge command contracts', () => {
     const h = await createHarness();
 
     await expect(h.run(`/cd ${h.tmp.workspace}`, { senderId: 'ou-not-admin' })).resolves.toBe(true);
-    expect(lastMarkdown(h.channel)).toContain('仅管理员可用');
+    expect(lastMarkdown(h.channel)).toContain('admins only');
 
     await expect(h.run('/ws save mine', { senderId: 'ou-not-admin' })).resolves.toBe(true);
-    expect(lastMarkdown(h.channel)).toContain('仅管理员可用');
+    expect(lastMarkdown(h.channel)).toContain('admins only');
   });
 
   it('does not expose authorization root management commands', async () => {
@@ -129,11 +129,11 @@ describe('Bridge command contracts', () => {
     await mkdir(plain, { recursive: true });
 
     await expect(h.run(`/ws add ${plain} docs`)).resolves.toBe(true);
-    expect(lastMarkdown(h.channel)).toContain('用法');
+    expect(lastMarkdown(h.channel)).toContain('Usage');
     expect(lastMarkdown(h.channel)).not.toContain('允许访问目录');
 
     await expect(h.run(`/ws remove --root ${plain}`)).resolves.toBe(true);
-    expect(lastMarkdown(h.channel)).toContain('未找到工作目录别名');
+    expect(lastMarkdown(h.channel)).toContain('Workspace alias not found');
   });
 
   it('keeps /ws remove as alias removal by default', async () => {
@@ -142,7 +142,7 @@ describe('Bridge command contracts', () => {
     await expect(h.run('/ws save main')).resolves.toBe(true);
     await expect(h.run('/ws remove main')).resolves.toBe(true);
 
-    expect(lastMarkdown(h.channel)).toContain('已删除工作目录别名');
+    expect(lastMarkdown(h.channel)).toContain('Workspace alias removed');
   });
 
   it('shows workspace paths in group-visible workspace replies', async () => {
@@ -157,7 +157,7 @@ describe('Bridge command contracts', () => {
     expect(lastMarkdown(h.channel)).toContain(targetRealpath);
 
     await expect(h.run('/ws save main', { chatMode: 'group' })).resolves.toBe(true);
-    expect(lastMarkdown(h.channel)).toContain('工作目录别名已保存');
+    expect(lastMarkdown(h.channel)).toContain('Workspace alias saved');
     expect(lastMarkdown(h.channel)).toContain(targetRealpath);
 
     await expect(h.run('/ws', { chatMode: 'group' })).resolves.toBe(true);
@@ -166,7 +166,7 @@ describe('Bridge command contracts', () => {
     expect(card).not.toContain('使用 $HOME');
 
     await expect(h.run('/ws use main', { chatMode: 'group' })).resolves.toBe(true);
-    expect(lastMarkdown(h.channel)).toContain('已切换到 `main`');
+    expect(lastMarkdown(h.channel)).toContain('Switched to `main`');
     expect(lastMarkdown(h.channel)).toContain(targetRealpath);
   });
 
@@ -195,7 +195,7 @@ describe('Bridge command contracts', () => {
 
     await expect(h.run(`/cd ${file}`, { chatMode: 'group' })).resolves.toBe(true);
 
-    expect(lastMarkdown(h.channel)).toContain('路径不是目录');
+    expect(lastMarkdown(h.channel)).toContain('Path is not a directory');
     expect(lastMarkdown(h.channel)).toContain(await realpath(file));
   });
 
@@ -205,7 +205,7 @@ describe('Bridge command contracts', () => {
     await mkdir(target, { recursive: true });
 
     await expect(h.run(`/doc ws bind doc-token ${target}`, { chatMode: 'group' })).resolves.toBe(true);
-    expect(lastMarkdown(h.channel)).toContain('不需要绑定工作区');
+    expect(lastMarkdown(h.channel)).toContain('no longer need a bound workspace');
     expect(lastMarkdown(h.channel)).not.toContain(target);
   });
 
@@ -214,7 +214,7 @@ describe('Bridge command contracts', () => {
 
     await expect(h.run('/resume', { chatMode: 'group' })).resolves.toBe(true);
 
-    expect(lastMarkdown(h.channel)).toContain('私聊');
+    expect(lastMarkdown(h.channel)).toContain('DM the bot');
     expect(lastMarkdown(h.channel)).not.toContain(h.tmp.workspace);
   });
 
@@ -226,9 +226,9 @@ describe('Bridge command contracts', () => {
     expect(h.agent.runOptions).toHaveLength(0);
     const status = JSON.stringify(lastContent(h.channel));
     expect(status).toContain('Fake Agent');
-    expect(status).toContain('工作目录');
+    expect(status).toContain('Workspaces');
     expect(status).toContain('**session**');
-    expect(status).toContain('(无)');
+    expect(status).toContain('(none)');
     expect(status).not.toContain('**conversation**');
     expect(status).toContain('permission');
     expect(status).toContain('plan');
@@ -255,7 +255,7 @@ describe('Bridge command contracts', () => {
       h.run('/ps', { senderId: 'ou-not-admin' }),
     ).resolves.toBe(true);
 
-    expect(lastMarkdown(h.channel)).toContain('仅管理员可用');
+    expect(lastMarkdown(h.channel)).toContain('admins only');
   });
 
   it('does not expose access allowlists through the Lark /config form', async () => {

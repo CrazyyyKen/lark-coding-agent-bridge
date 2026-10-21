@@ -28,19 +28,19 @@ export async function resolveWorkingDirectory(
 ): Promise<WorkingDirectoryResolveResult> {
   const trimmed = requestedCwd.trim();
   if (!trimmed) {
-    return reject('empty-requested-cwd', requestedCwd, '未指定工作目录。');
+    return reject('empty-requested-cwd', requestedCwd, 'No workspace specified.');
   }
 
   let resolved: string;
   try {
     resolved = await realpath(trimmed);
   } catch {
-    return reject('path-inaccessible', requestedCwd, `工作目录不存在或不可访问：${requestedCwd}`);
+    return reject('path-inaccessible', requestedCwd, `Workspace does not exist or is not accessible: ${requestedCwd}`);
   }
 
   const info = await stat(resolved).catch(() => undefined);
   if (!info?.isDirectory()) {
-    return reject('not-directory', requestedCwd, `路径不是目录：${resolved}`);
+    return reject('not-directory', requestedCwd, `Path is not a directory: ${resolved}`);
   }
 
   const tempRealpath = await realpath(tmpdir()).catch(() => resolve(tmpdir()));
@@ -70,24 +70,24 @@ function classifyHighRiskWorkingDirectory(
   homeRealpath: string,
 ): WorkingDirectoryResolveResult | undefined {
   if (real === dirname(real)) {
-    return reject('filesystem-root', requestedCwd, '不能把文件系统根目录设为工作目录。');
+    return reject('filesystem-root', requestedCwd, 'The filesystem root cannot be used as the workspace.');
   }
 
   const home = homeRealpath;
   if (real === home) {
-    return reject('home-root', requestedCwd, '不能把 Home 根目录设为工作目录，请选择更具体的子目录。');
+    return reject('home-root', requestedCwd, 'The home directory itself cannot be used as the workspace. Please pick a more specific subfolder.');
   }
   if (real === dirname(home)) {
-    return reject('user-root', requestedCwd, '不能把用户目录根设为工作目录，请选择更具体的子目录。');
+    return reject('user-root', requestedCwd, 'The users root directory cannot be used as the workspace. Please pick a more specific subfolder.');
   }
 
   if (dirname(real) === home && new Set(['Desktop', 'Downloads']).has(basename(real))) {
-    return reject('broad-user-folder', requestedCwd, '这个目录范围过大，请选择更具体的子目录。');
+    return reject('broad-user-folder', requestedCwd, 'This folder is too broad. Please pick a more specific subfolder.');
   }
 
   const temp = resolve(tmpdir());
   if (real === temp || real === tempRealpath || real === '/tmp' || real === '/private/tmp') {
-    return reject('temp-root', requestedCwd, '不能把临时目录根设为工作目录，请选择更具体的子目录。');
+    return reject('temp-root', requestedCwd, 'The temp directory root cannot be used as the workspace. Please pick a more specific subfolder.');
   }
 
   const systemRoots = new Set([
@@ -102,11 +102,11 @@ function classifyHighRiskWorkingDirectory(
     '/var',
   ]);
   if (systemRoots.has(real)) {
-    return reject('system-root', requestedCwd, '不能把系统目录设为工作目录。');
+    return reject('system-root', requestedCwd, 'A system directory cannot be used as the workspace.');
   }
 
   if (real === '/Volumes' || dirname(real) === '/Volumes') {
-    return reject('volume-root', requestedCwd, '不能把磁盘卷根目录设为工作目录，请选择更具体的子目录。');
+    return reject('volume-root', requestedCwd, 'A drive/volume root cannot be used as the workspace. Please pick a more specific subfolder.');
   }
 
   return undefined;

@@ -19,4 +19,10 @@ if [ ! -f "$HOME/workspace/.claude/settings.json" ]; then
   cp /opt/lark-bot/workspace-settings.json "$HOME/workspace/.claude/settings.json"
 fi
 
+# New bots default to Sonnet 5.5; picking a model in /config still overrides it.
+if [ ! -f "$HOME/.claude/settings.json" ]; then
+  mkdir -p "$HOME/.claude"
+  printf '{\n  "model": "claude-sonnet-5-5"\n}\n' > "$HOME/.claude/settings.json"
+fi
+
 exec "$@"

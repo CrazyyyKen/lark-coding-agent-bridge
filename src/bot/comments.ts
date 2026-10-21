@@ -169,7 +169,7 @@ export async function handleCommentMention(deps: CommentDeps): Promise<void> {
       code: workspace.reason,
       commentScopeId: runScopeId,
     });
-    await postCommentReply(channel, target, evt, `工作目录不可用：${workspace.userVisible}`, {
+    await postCommentReply(channel, target, evt, `Workspace unavailable: ${workspace.userVisible}`, {
       isWhole: ctx.isWhole,
     }).catch((err) => {
       log.fail('comment', err, { step: 'postInvalidWorkspaceReply' });
@@ -370,7 +370,7 @@ export async function handleCommentMention(deps: CommentDeps): Promise<void> {
           reason: 'policy-expired',
           commentScopeId: runScopeId,
         });
-        await postCommentReply(channel, target, evt, '本次评论任务已超时，请重新 @ 我。', {
+        await postCommentReply(channel, target, evt, 'This comment task timed out. Please @ me again.', {
           isWhole: ctx.isWhole,
         }).catch((err) => {
           log.fail('comment', err, { step: 'postTimeoutReply' });
@@ -387,8 +387,8 @@ export async function handleCommentMention(deps: CommentDeps): Promise<void> {
       }
 
       let reply = stripMarkdown(answer.trim());
-      if (errorMsg) reply = `⚠️ Claude 报错：${errorMsg}`;
-      if (!reply) reply = '（无回复内容）';
+      if (errorMsg) reply = `⚠️ Claude error: ${errorMsg}`;
+      if (!reply) reply = '(No reply content)';
       if (reply.length > REPLY_MAX_CHARS) reply = `${reply.slice(0, REPLY_MAX_CHARS - 1)}…`;
 
       await postCommentReply(channel, target, evt, reply, { isWhole: ctx.isWhole }).catch((err) => {
@@ -521,13 +521,13 @@ function recordCommentSessionEvent(
 function commentRunRejectedReply(code: RunRejected['code']): string | undefined {
   switch (code) {
     case 'run-already-active':
-      return '当前评论线程已有任务在执行，请稍后再试。';
+      return 'A task is already running in this comment thread. Please try again later.';
     case 'pool-full':
-      return '当前任务较多，请稍后再试。';
+      return 'Too many tasks right now. Please try again later.';
     case 'reconnect-in-progress':
-      return '当前 bot 正在重连，请稍后再试。';
+      return 'The bot is reconnecting. Please try again later.';
     case 'policy-expired':
-      return '本次评论任务已超时，请重新 @ 我。';
+      return 'This comment task timed out. Please @ me again.';
   }
 }
 
@@ -656,8 +656,8 @@ async function resolveManagedCommentWorkingDirectory(
       reason: 'managed-fallback-unavailable',
       userVisible: [
         ...failures,
-        `托管工作目录不可用：${err instanceof Error ? err.message : String(err)}`,
-      ].join('；'),
+        `Managed workspace unavailable: ${err instanceof Error ? err.message : String(err)}`,
+      ].join('; '),
     };
   }
   const workspace = await resolveWorkingDirectory(managedFallbackCwd);
@@ -676,7 +676,7 @@ async function resolveManagedCommentWorkingDirectory(
     requestedCwd: managedFallbackCwd,
     cwdRealpath: managedFallbackCwd,
     reason: workspace.reason,
-    userVisible: [...failures, workspace.userVisible].join('；'),
+    userVisible: [...failures, workspace.userVisible].join('; '),
   };
 }
 

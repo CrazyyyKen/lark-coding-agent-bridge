@@ -94,7 +94,7 @@ describe('team sign-in commands', () => {
   it("keeps a team bot's shared session list away from non-admins", async () => {
     const h = await harness({ logins: false });
     await tryHandleCommand(h.ctx('ou_member01', '/resume'));
-    expect(lastMarkdown(h.channel)).toContain('仅管理员可用');
+    expect(lastMarkdown(h.channel)).toContain('admins only');
   });
 });
 

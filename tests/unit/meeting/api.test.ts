@@ -55,7 +55,7 @@ describe('meeting REST layer', () => {
 
   it('refuses a non-9-digit meeting number before calling the API', async () => {
     const { client, calls } = fakeClient({ code: 0, data: {} });
-    await expect(joinMeeting(client, { meetingNo: '7000123456789' })).rejects.toThrow(/9 位数字/);
+    await expect(joinMeeting(client, { meetingNo: '7000123456789' })).rejects.toThrow(/9 digits/);
     expect(calls).toHaveLength(0);
   });
 

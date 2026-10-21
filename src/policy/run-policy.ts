@@ -88,11 +88,11 @@ const DEFAULT_TTL_MS = 5 * 60 * 1000;
 
 export function evaluateRunPolicy(input: RunPolicyInput): RunPolicyResult {
   if (!input.access.ok) {
-    return reject('access-denied', '当前用户无权发起运行。');
+    return reject('access-denied', 'You are not allowed to start a run.');
   }
 
   if (input.scope.resourceBindings?.some((binding) => binding.kind === 'folder' && !binding.verified)) {
-    return reject('folder-allowlist-unverified', '暂不支持 folder allowlist，已拒绝运行。');
+    return reject('folder-allowlist-unverified', 'Folder allowlists are not supported yet, so the run was rejected.');
   }
 
   if (
@@ -101,7 +101,7 @@ export function evaluateRunPolicy(input: RunPolicyInput): RunPolicyResult {
         attachment.requiredness === 'required' && attachment.decision !== 'accepted',
     )
   ) {
-    return reject('required-attachment-rejected', '必需附件未通过校验，已拒绝运行。');
+    return reject('required-attachment-rejected', 'A required attachment failed validation, so the run was rejected.');
   }
 
   const accessMode = clampAccess(

@@ -174,8 +174,8 @@ interface ResumeCandidate {
 
 const RESUME_CANDIDATE_TTL_MS = 10 * 60 * 1000;
 const resumeCandidates = new Map<string, ResumeCandidate>();
-const AUDIT_SAFE_COMMAND_REPLY = '命令已处理。';
-const RESUME_APPLIED_REPLY = '已完成，请继续发送下一条消息。';
+const AUDIT_SAFE_COMMAND_REPLY = 'Command processed.';
+const RESUME_APPLIED_REPLY = 'Done. Send your next message to continue.';
 
 const handlers: Record<string, Handler> = {
   '/new': handleNew,
@@ -244,7 +244,7 @@ export async function tryHandleCommand(ctx: CommandContext): Promise<boolean> {
       cmd,
       sender: ctx.msg.senderId.slice(-6),
     });
-    await reply(ctx, '❌ 此命令仅管理员可用。');
+    await reply(ctx, '❌ This command is for admins only.');
     return true;
   }
   try {
@@ -354,7 +354,7 @@ async function handleNew(args: string, ctx: CommandContext): Promise<void> {
     });
   }
   ctx.sessions.clear(ctx.scope);
-  await reply(ctx, wasRunning ? '已中断当前任务并开始新会话。' : '已开始新会话。');
+  await reply(ctx, wasRunning ? 'Stopped the current task and started a new session.' : 'Started a new session.');
 }
 
 async function handleNewChat(rawName: string, ctx: CommandContext): Promise<void> {
@@ -370,7 +370,7 @@ async function handleNewChat(rawName: string, ctx: CommandContext): Promise<void
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    await reply(ctx, `❌ 创建群失败：${msg}\n\n确认 bot 已开启 \`im:chat\` 权限。`);
+    await reply(ctx, `❌ Failed to create group: ${msg}\n\nMake sure the bot has the \`im:chat\` permission enabled.`);
     return;
   }
 
@@ -382,8 +382,8 @@ async function handleNewChat(rawName: string, ctx: CommandContext): Promise<void
 
   // Welcome the user inside the new group with a hint about how to start.
   const welcome = sourceCwd
-    ? `🎉 群已建好，cwd 继承自原群：\`${sourceCwd}\`\n\n@我 + 任意消息开始对话。`
-    : '🎉 群已建好。\n\n@我 + 任意消息开始对话。';
+    ? `🎉 Group created. cwd carried over from the original group: \`${sourceCwd}\`\n\n@mention me with any message to start.`
+    : '🎉 Group created.\n\n@mention me with any message to start.';
   try {
     await ctx.channel.send(created.chatId, { markdown: welcome });
   } catch (err) {
@@ -392,18 +392,18 @@ async function handleNewChat(rawName: string, ctx: CommandContext): Promise<void
 
   await reply(
     ctx,
-    `✓ 已创建群 **${created.name}**，去新群里继续。`,
+    `✓ Created group **${created.name}**. Continue in the new group.`,
   );
 }
 
 async function handleCd(args: string, ctx: CommandContext): Promise<void> {
   const input = args.trim();
   if (!input) {
-    await reply(ctx, '用法：`/cd <绝对路径>` 或 `/cd ~/xxx`');
+    await reply(ctx, 'Usage: `/cd <absolute path>` or `/cd ~/xxx`');
     return;
   }
   if (!isAbsoluteOrTilde(input)) {
-    await reply(ctx, '请使用绝对路径，或 `~/xxx` 表示 home 下的子路径。');
+    await reply(ctx, 'Use an absolute path, or `~/xxx` for a path under your home directory.');
     return;
   }
   const absolute = expandTilde(input);
@@ -415,7 +415,7 @@ async function handleCd(args: string, ctx: CommandContext): Promise<void> {
   ctx.activeRuns.interrupt(ctx.scope);
   ctx.workspaces.setCwd(ctx.scope, workspace.cwdRealpath);
   ctx.sessions.clear(ctx.scope);
-  await reply(ctx, `✓ 已切换 cwd 到 \`${workspace.cwdRealpath}\`\n（session 已重置）`);
+  await reply(ctx, `✓ Switched cwd to \`${workspace.cwdRealpath}\`\n(session reset)`);
 }
 
 async function handleWs(args: string, ctx: CommandContext): Promise<void> {
@@ -434,7 +434,7 @@ async function handleWs(args: string, ctx: CommandContext): Promise<void> {
     case 'rm':
       return handleWsRemove(name, ctx);
     default:
-      await reply(ctx, '用法：`/ws [list|save <name>|use <name>|remove <name>]`');
+      await reply(ctx, 'Usage: `/ws [list|save <name>|use <name>|remove <name>]`');
   }
 }
 
@@ -450,26 +450,26 @@ async function handleWsList(ctx: CommandContext): Promise<void> {
 
 async function handleWsSave(name: string, ctx: CommandContext): Promise<void> {
   if (!name) {
-    await reply(ctx, '用法：`/ws save <name>`');
+    await reply(ctx, 'Usage: `/ws save <name>`');
     return;
   }
   const cwd = effectiveWorkspaceCwd(ctx);
   if (!cwd) {
-    await reply(ctx, '当前 chat 未设置 cwd，先用 `/cd` 设置再保存。');
+    await reply(ctx, 'No cwd is set for this chat. Set one with `/cd` first, then save.');
     return;
   }
   ctx.workspaces.saveNamed(scopedWorkspaceName(ctx, name), cwd);
-  await reply(ctx, `✓ 工作目录别名已保存：\`${name}\` → ${cwd}`);
+  await reply(ctx, `✓ Workspace alias saved: \`${name}\` → ${cwd}`);
 }
 
 async function handleWsUse(name: string, ctx: CommandContext): Promise<void> {
   if (!name) {
-    await reply(ctx, '用法：`/ws use <name>`');
+    await reply(ctx, 'Usage: `/ws use <name>`');
     return;
   }
   const cwd = getWorkspaceAlias(ctx, name);
   if (!cwd) {
-    await reply(ctx, `未找到工作目录别名：\`${name}\``);
+    await reply(ctx, `Workspace alias not found: \`${name}\``);
     return;
   }
   const workspace = await resolveWorkingDirectory(cwd);
@@ -480,24 +480,24 @@ async function handleWsUse(name: string, ctx: CommandContext): Promise<void> {
   ctx.activeRuns.interrupt(ctx.scope);
   ctx.workspaces.setCwd(ctx.scope, workspace.cwdRealpath);
   ctx.sessions.clear(ctx.scope);
-  await reply(ctx, `✓ 已切换到 \`${name}\` (${workspace.cwdRealpath})\n（session 已重置）`);
+  await reply(ctx, `✓ Switched to \`${name}\` (${workspace.cwdRealpath})\n(session reset)`);
 }
 
 async function handleWsRemove(name: string, ctx: CommandContext): Promise<void> {
   if (!name) {
-    await reply(ctx, '用法：`/ws remove <name>`');
+    await reply(ctx, 'Usage: `/ws remove <name>`');
     return;
   }
   if (!removeWorkspaceAlias(ctx, name)) {
-    await reply(ctx, `未找到工作目录别名：\`${name}\``);
+    await reply(ctx, `Workspace alias not found: \`${name}\``);
     return;
   }
-  await reply(ctx, `✓ 已删除工作目录别名：\`${name}\``);
+  await reply(ctx, `✓ Workspace alias removed: \`${name}\``);
 }
 
 async function handleDoc(args: string, ctx: CommandContext): Promise<void> {
   void args;
-  await reply(ctx, '云文档评论现在不需要绑定工作区；在支持的文档评论里 @bot 即可触发回复。');
+  await reply(ctx, 'Doc comments no longer need a bound workspace. Just @mention the bot in a supported doc comment to get a reply.');
 }
 
 const WORKSPACE_NAME_SEPARATOR = '\u001f';
@@ -563,12 +563,12 @@ async function handleResume(args: string, ctx: CommandContext): Promise<void> {
 
   const cwd = selectedResumeCwd(ctx);
   if (!cwd) {
-    await reply(ctx, '请先使用 /cd <path> 选择工作目录，再查看或恢复会话。');
+    await reply(ctx, 'Pick a workspace with /cd <path> first, then view or resume sessions.');
     return;
   }
 
   if (ctx.chatMode !== 'p2p') {
-    await reply(ctx, '群聊中不展示历史会话详情。请私聊 bot 使用 `/resume` 查看和选择历史会话。');
+    await reply(ctx, 'Past sessions are not shown in groups. DM the bot and use `/resume` to view and pick a past session.');
     return;
   }
 
@@ -580,7 +580,7 @@ async function handleResume(args: string, ctx: CommandContext): Promise<void> {
     !ctx.controls.teamLogin?.logins &&
     !canRunAdminCommand(ctx.controls.profileConfig, ctx.controls, ctx.msg.senderId).ok
   ) {
-    await reply(ctx, '❌ 团队版 bot 的 /resume 仅管理员可用。');
+    await reply(ctx, '❌ On team bots, /resume is for admins only.');
     return;
   }
 
@@ -610,7 +610,7 @@ async function handleResume(args: string, ctx: CommandContext): Promise<void> {
       const nonce = issueResumeCandidate(identity, { threadId: entry.threadId });
       await reply(
         ctx,
-        `当前 Codex thread 可恢复。\n使用 \`/resume use ${nonce}\` 恢复（10 分钟内有效）。`,
+        `The current Codex thread can be resumed.\nUse \`/resume use ${nonce}\` to resume (valid for 10 minutes).`,
       );
       return;
     }
@@ -664,12 +664,12 @@ async function applyResume(sessionId: string, ctx: CommandContext): Promise<void
       return;
     }
     if (ctx.sessionCatalogIdentity.agentId === 'codex') {
-      await reply(ctx, '当前上下文不可恢复这个会话，请先用 `/resume` 重新生成恢复候选。');
+      await reply(ctx, "This session can't be resumed here. Run `/resume` again to get a fresh list.");
       return;
     }
     const expected = entry?.sessionId;
     if (expected !== sessionId) {
-      await reply(ctx, '当前上下文不可恢复这个会话，请重新选择当前工作区和权限策略下的会话。');
+      await reply(ctx, "This session can't be resumed here. Pick a session from the current workspace and permission policy.");
       return;
     }
     ctx.activeRuns.interrupt(ctx.scope);
@@ -681,13 +681,13 @@ async function applyResume(sessionId: string, ctx: CommandContext): Promise<void
   }
 
   if (ctx.controls.profileConfig.agentKind === 'codex') {
-    await reply(ctx, '当前上下文没有可恢复的 Codex thread，请先在当前工作区完成一次运行。');
+    await reply(ctx, 'No Codex thread to resume here. Complete one run in the current workspace first.');
     return;
   }
 
   const cwd = selectedResumeCwd(ctx);
   if (!cwd) {
-    await reply(ctx, '请先使用 /cd <path> 选择工作目录，再查看或恢复会话。');
+    await reply(ctx, 'Pick a workspace with /cd <path> first, then view or resume sessions.');
     return;
   }
   ctx.activeRuns.interrupt(ctx.scope);
@@ -857,7 +857,7 @@ async function handleStatus(_args: string, ctx: CommandContext): Promise<void> {
     profileName: ctx.controls.profile,
     cwd,
     sessionId: isCodex ? catalogEntry?.threadId : sess?.sessionId,
-    emptySessionText: isCodex ? '(未建立)' : undefined,
+    emptySessionText: isCodex ? '(not started)' : undefined,
     sessionStale: !isCodex && Boolean(cwd && sess && sess.cwd !== cwd),
     agentName: ctx.agent.displayName,
     runtimeAccess: runtimeAccessStatus(ctx.controls.profileConfig),
@@ -885,7 +885,7 @@ function formatOwnerState(ctx: CommandContext): string {
 async function handleStop(args: string, ctx: CommandContext): Promise<void> {
   const targetScope = args.trim();
   if (targetScope && !canRunAdminCommand(ctx.controls.profileConfig, ctx.controls, ctx.msg.senderId).ok) {
-    await reply(ctx, '❌ 指定 scope 停止任务仅管理员可用。');
+    await reply(ctx, '❌ Stopping a specific scope is for admins only.');
     return;
   }
   const scope = targetScope || ctx.scope;
@@ -899,8 +899,8 @@ async function handleStop(args: string, ctx: CommandContext): Promise<void> {
     await reply(
       ctx,
       ok
-        ? `已请求停止 \`${scope}\`。`
-        : `未找到正在运行的任务：\`${scope}\`。`,
+        ? `Stop requested for \`${scope}\`.`
+        : `No running task found: \`${scope}\`.`,
     );
   }
   // No reply for the current IM scope: if there was a run, its in-flight
@@ -914,7 +914,7 @@ async function handleTimeout(args: string, ctx: CommandContext): Promise<void> {
     parsed.targeted &&
     !canRunAdminCommand(ctx.controls.profileConfig, ctx.controls, ctx.msg.senderId).ok
   ) {
-    await reply(ctx, '❌ 指定 scope 设置 timeout 仅管理员可用。');
+    await reply(ctx, '❌ Setting the timeout for a specific scope is for admins only.');
     return;
   }
   const scope = parsed.scope;
@@ -922,21 +922,21 @@ async function handleTimeout(args: string, ctx: CommandContext): Promise<void> {
   const globalMs = getRunIdleTimeoutMs(ctx.controls.cfg);
   const globalMinutes = globalMs ? Math.round(globalMs / 60_000) : 0;
   const formatGlobal = (): string =>
-    globalMinutes > 0 ? `${globalMinutes} 分钟` : '未启用';
+    globalMinutes > 0 ? `${globalMinutes} min` : 'disabled';
 
   // /timeout — show effective value + source
   if (!value) {
     const scopeMinutes = ctx.sessions.getIdleTimeoutMinutes(scope);
     const usage =
-      '\n\n用法:\n- `/timeout 15` 当前 session 设 15 分钟\n- `/timeout off` 当前 session 关闭探活\n- `/timeout default` 清除 session 覆盖,回退全局\n- `/timeout comment:<scopeHash> 15` 管理员设置 comment scope\n\n_注:`/new` 会清掉当前 session 的覆盖,回到全局_';
+      '\n\nUsage:\n- `/timeout 15` set 15 minutes for this session\n- `/timeout off` turn off the inactivity check for this session\n- `/timeout default` clear the session override and use the global default\n- `/timeout comment:<scopeHash> 15` admin: set it for a comment scope\n\n_Note: `/new` clears the override for this session and goes back to the global default_';
     const scopeLabel = parsed.targeted ? ` (${scope})` : '';
     if (scopeMinutes !== undefined) {
       const effective =
-        scopeMinutes > 0 ? `${scopeMinutes} 分钟` : '已关闭（当前 session）';
-      await reply(ctx, `⏱ 当前 session${scopeLabel} 探活:${effective}\n全局默认:${formatGlobal()}${usage}`);
+        scopeMinutes > 0 ? `${scopeMinutes} min` : 'off (this session)';
+      await reply(ctx, `⏱ Inactivity check for this session${scopeLabel}: ${effective}\nGlobal default: ${formatGlobal()}${usage}`);
       return;
     }
-    await reply(ctx, `⏱ 当前 session${scopeLabel} 探活:跟随全局(${formatGlobal()})${usage}`);
+    await reply(ctx, `⏱ Inactivity check for this session${scopeLabel}: global default (${formatGlobal()})${usage}`);
     return;
   }
 
@@ -946,8 +946,8 @@ async function handleTimeout(args: string, ctx: CommandContext): Promise<void> {
     await reply(
       ctx,
       cleared
-        ? `✅ 已清除 session 覆盖,回退到全局(${formatGlobal()})。`
-        : `当前 session 本来就没设过覆盖,跟随全局(${formatGlobal()})。`,
+        ? `✅ Cleared the session override. Using the global default (${formatGlobal()}).`
+        : `This session has no override. Using the global default (${formatGlobal()}).`,
     );
     return;
   }
@@ -955,18 +955,18 @@ async function handleTimeout(args: string, ctx: CommandContext): Promise<void> {
   if (value === 'off' || value === '0') {
     ctx.sessions.setIdleTimeoutMinutes(scope, 0);
     log.info('command', 'timeout-off', { scope, targeted: parsed.targeted });
-    await reply(ctx, '✅ 已关闭当前 session 的探活。');
+    await reply(ctx, '✅ Turned off the inactivity check for this session.');
     return;
   }
 
   const n = Number.parseInt(value, 10);
   if (!Number.isFinite(n) || n < 1 || n > 120) {
-    await reply(ctx, '❌ 用法:`/timeout <1-120>` / `/timeout off` / `/timeout default`');
+    await reply(ctx, '❌ Usage: `/timeout <1-120>` / `/timeout off` / `/timeout default`');
     return;
   }
   ctx.sessions.setIdleTimeoutMinutes(scope, n);
   log.info('command', 'timeout-set', { scope, minutes: n, targeted: parsed.targeted });
-  await reply(ctx, `✅ 当前 session 探活已设为 ${n} 分钟。`);
+  await reply(ctx, `✅ Inactivity check for this session set to ${n} minutes.`);
 }
 
 function parseTimeoutTarget(input: string, currentScope: string): {
@@ -994,26 +994,26 @@ async function handlePs(_args: string, ctx: CommandContext): Promise<void> {
   const live = readAndPrune();
   log.info('command', 'ps', { count: live.length });
   if (live.length === 0) {
-    await reply(ctx, '当前没有 bot 在运行(理论上不可能,你正在跟其中之一对话…)');
+    await reply(ctx, 'No bots are running (this should be impossible, you are talking to one…)');
     return;
   }
 
   const rows: string[] = [
-    '| # | ID | Bot | 启动 |',
+    '| # | ID | Bot | Started |',
     '|---|---|---|---|',
   ];
   for (const [idx, e] of live.entries()) {
     const ago = formatAgo(Date.now() - new Date(e.startedAt).getTime());
-    const me = e.id === ctx.controls.processId ? ' ← 当前正在回复' : '';
+    const me = e.id === ctx.controls.processId ? ' ← replying to you' : '';
     const bot = e.botName ? `${e.botName} (\`${e.appId}\`)` : `\`${e.appId}\``;
     rows.push(`| ${idx + 1} | \`${e.id}\`${me} | ${bot} | ${ago} |`);
   }
   const body = [
-    `🧭 **当前有 ${live.length} 个 bot 在运行**`,
+    `🧭 **${live.length} bot(s) running**`,
     '',
     rows.join('\n'),
     '',
-    '用 `/exit <id|#>` 关掉某一个;`/exit ' + ctx.controls.processId + '` 关掉正在回复你的这个 bot。',
+    'Use `/exit <id|#>` to stop one; `/exit ' + ctx.controls.processId + '` stops the bot replying to you.',
   ].join('\n');
   await reply(ctx, body);
 }
@@ -1023,21 +1023,21 @@ async function handleExit(args: string, ctx: CommandContext): Promise<void> {
   if (!target) {
     await reply(
       ctx,
-      '用法:`/exit <id|#>` —— `id` 是 `/ps` 显示的短 id,`#` 是序号。\n' +
-        `当前正在回复你的是 \`${ctx.controls.processId}\`。`,
+      'Usage: `/exit <id|#>` — `id` is the short id shown by `/ps`, `#` is the row number.\n' +
+        `The bot replying to you is \`${ctx.controls.processId}\`.`,
     );
     return;
   }
   const entry = resolveTarget(target);
   if (!entry) {
-    await reply(ctx, `❌ 没找到匹配的 bot:\`${target}\`。发 \`/ps\` 看可选目标。`);
+    await reply(ctx, `❌ No matching bot: \`${target}\`. Send \`/ps\` to see the options.`);
     return;
   }
 
   // Targeting ourselves — graceful disconnect + process.exit(0) via controls.
   if (entry.id === ctx.controls.processId) {
     log.info('command', 'exit-self', { id: entry.id });
-    await reply(ctx, `👋 即将关闭当前 bot \`${entry.id}\`,再见。`);
+    await reply(ctx, `👋 Shutting down this bot \`${entry.id}\`. Bye.`);
     // Detach to give the reply send a chance to complete before we tear
     // down. controls.exit() awaits disconnect then process.exit().
     void (async () => {
@@ -1054,7 +1054,7 @@ async function handleExit(args: string, ctx: CommandContext): Promise<void> {
   try {
     process.kill(entry.pid, 'SIGTERM');
   } catch (err) {
-    await reply(ctx, `❌ 关掉 bot \`${entry.id}\` 失败:${(err as Error).message}`);
+    await reply(ctx, `❌ Failed to stop bot \`${entry.id}\`: ${(err as Error).message}`);
     return;
   }
   // Brief grace before reporting.
@@ -1063,24 +1063,24 @@ async function handleExit(args: string, ctx: CommandContext): Promise<void> {
   if (stillAlive) {
     await reply(
       ctx,
-      `📨 已请求关闭 \`${entry.id}\`,但还在收尾。再发 \`/ps\` 复查一下。`,
+      `📨 Asked \`${entry.id}\` to stop, but it is still shutting down. Send \`/ps\` again to check.`,
     );
   } else {
-    await reply(ctx, `✓ 已关闭 bot \`${entry.id}\`。`);
+    await reply(ctx, `✓ Stopped bot \`${entry.id}\`.`);
   }
 }
 
 function formatAgo(ms: number): string {
-  if (ms < 60_000) return `${Math.floor(ms / 1000)}s 前`;
-  if (ms < 3_600_000) return `${Math.floor(ms / 60_000)}m 前`;
-  if (ms < 86_400_000) return `${Math.floor(ms / 3_600_000)}h 前`;
-  return `${Math.floor(ms / 86_400_000)}d 前`;
+  if (ms < 60_000) return `${Math.floor(ms / 1000)}s ago`;
+  if (ms < 3_600_000) return `${Math.floor(ms / 60_000)}m ago`;
+  if (ms < 86_400_000) return `${Math.floor(ms / 3_600_000)}h ago`;
+  return `${Math.floor(ms / 86_400_000)}d ago`;
 }
 
 async function handleReconnect(args: string, ctx: CommandContext): Promise<void> {
   const wait = args.trim().split(/\s+/).filter(Boolean).includes('--wait');
   log.info('command', 'reconnect', { wait });
-  await reply(ctx, wait ? '⏳ 将在当前运行结束后重连…' : '⏳ 正在停止当前运行并重连…');
+  await reply(ctx, wait ? '⏳ Will reconnect after the current run finishes…' : '⏳ Stopping the current run and reconnecting…');
   let resumeNewRuns: (() => void) | undefined;
   try {
     resumeNewRuns = ctx.activeRuns.pauseNewRuns('reconnect-in-progress');
@@ -1094,7 +1094,7 @@ async function handleReconnect(args: string, ctx: CommandContext): Promise<void>
   } catch (err) {
     log.fail('command', err, { step: 'reconnect' });
     reportMetric('command_fail', 1, { step: 'reconnect' });
-    await reply(ctx, `❌ 重连失败:${err instanceof Error ? err.message : String(err)}`);
+    await reply(ctx, `❌ Reconnect failed: ${err instanceof Error ? err.message : String(err)}`);
   } finally {
     resumeNewRuns?.();
   }
@@ -1116,7 +1116,7 @@ async function handleDoctor(args: string, ctx: CommandContext): Promise<void> {
   const now = Date.now();
   const last = doctorLastByOperator.get(rateKey);
   if (last !== undefined && now - last < DOCTOR_RATE_LIMIT_MS) {
-    await reply(ctx, 'doctor rate limited: 同一用户 30 秒内只能触发一次。');
+    await reply(ctx, 'doctor rate limited: each user can run it once every 30 seconds.');
     return;
   }
 
@@ -1126,7 +1126,7 @@ async function handleDoctor(args: string, ctx: CommandContext): Promise<void> {
       ctx,
       buildDoctorReport(ctx, {
         workspaceCheck:
-          '未设置工作目录。先用 `/cd <path>` 或 `/ws use <name>` 选择工作目录后再运行 agent echo check。',
+          'No workspace set. Pick one with `/cd <path>` or `/ws use <name>` before running the agent echo check.',
         echoCheck: 'skipped',
       }),
     );
@@ -1138,7 +1138,7 @@ async function handleDoctor(args: string, ctx: CommandContext): Promise<void> {
     await reply(
       ctx,
       buildDoctorReport(ctx, {
-        workspaceCheck: `${workspace.userVisible} 工作目录不可用时只执行 self-check，不启动 agent。`,
+        workspaceCheck: `${workspace.userVisible} With the workspace unavailable, only the self-check runs and the agent is not started.`,
         echoCheck: 'skipped',
       }),
     );
@@ -1158,7 +1158,7 @@ async function handleDoctor(args: string, ctx: CommandContext): Promise<void> {
 
   const profileKey = ctx.controls.profile;
   if (doctorInFlightProfiles.has(profileKey)) {
-    await reply(ctx, 'doctor in-flight: 当前 profile 已有诊断运行中。');
+    await reply(ctx, 'doctor in-flight: a diagnosis is already running for this profile.');
     return;
   }
   doctorLastByOperator.set(rateKey, now);
@@ -1210,7 +1210,7 @@ async function handleDoctor(args: string, ctx: CommandContext): Promise<void> {
   // open_id (Lark auto-opens the p2p chat with the bot).
   const isP2p = ctx.chatMode === 'p2p';
   if (!isP2p) {
-    await reply(ctx, '🔍 已收到诊断请求，分析结果将私信发给你。');
+    await reply(ctx, '🔍 Diagnosis request received. The results will be sent to you by DM.');
   }
 
   doctorInFlightProfiles.add(profileKey);
@@ -1339,7 +1339,7 @@ function buildDoctorReport(
     'self-check: ok',
     `profile: ${ctx.controls.profile}`,
     `agent: ${ctx.agent.displayName} (${ctx.controls.profileConfig.agentKind})`,
-    `workspace: ${cwd ?? '(未设置)'}`,
+    `workspace: ${cwd ?? '(not set)'}`,
     `workspace default: ${ctx.controls.profileConfig.workspaces.default ? 'set' : 'missing'}`,
     `${runtimeAccess.label}: ${runtimeAccess.value}`,
     `access: ${access.ok ? 'ok' : 'denied'} (${access.reason})`,
@@ -1388,7 +1388,7 @@ async function handleAccount(args: string, ctx: CommandContext): Promise<void> {
     case 'cancel':
       return cancelAccount(ctx);
     default:
-      await reply(ctx, '用法：`/account` 或 `/account change`');
+      await reply(ctx, 'Usage: `/account` or `/account change`');
   }
 }
 
@@ -1485,7 +1485,7 @@ async function submitAccount(ctx: CommandContext): Promise<void> {
     };
 
     if (!appId || !appSecret) {
-      await finishFailure('App ID 或 App Secret 为空');
+      await finishFailure('App ID or App Secret is empty');
       return;
     }
 
@@ -1511,7 +1511,7 @@ async function submitAccount(ctx: CommandContext): Promise<void> {
       await saveAccountConfig(ctx, newCfg, appSecret);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      await finishFailure(`保存凭据失败：${msg}`);
+      await finishFailure(`Failed to save credentials: ${msg}`);
       return;
     }
 
@@ -1567,9 +1567,9 @@ async function handleInvite(args: string, ctx: CommandContext): Promise<void> {
       };
     });
     if (knownChats.length === 0) {
-      await reply(ctx, '当前 bot 还不在任何群里，没有可加入的群。');
+      await reply(ctx, 'The bot is not in any groups yet, so there are none to add.');
     } else {
-      await reply(ctx, `✅ 已把 bot 所在的 ${added} 个群加入响应群名单（共 ${total} 个）。`);
+      await reply(ctx, `✅ Added ${added} group(s) the bot is in to the allowed group list (${total} total).`);
     }
     return;
   }
@@ -1582,18 +1582,18 @@ async function handleInvite(args: string, ctx: CommandContext): Promise<void> {
   if (!kind) {
     await reply(
       ctx,
-      '用法：\n' +
-        '• `/invite user @某人` — 加入允许私聊\n' +
-        '• `/invite admin @某人` — 加入管理员\n' +
-        '• `/invite group` — 把当前群加入响应群名单\n' +
-        '• `/invite all group` — 把 bot 所在的所有群一键加入',
+      'Usage:\n' +
+        '• `/invite user @someone` — allow them to DM the bot\n' +
+        '• `/invite admin @someone` — make them an admin\n' +
+        '• `/invite group` — add this group to the allowed group list\n' +
+        '• `/invite all group` — add every group the bot is in',
     );
     return;
   }
 
   if (kind === 'group') {
     if (ctx.chatMode === 'p2p') {
-      await reply(ctx, '❌ `/invite group` 只能在群里发，在私聊里没有 chat_id 可以加。');
+      await reply(ctx, '❌ `/invite group` only works in a group. A DM has no chat_id to add.');
       return;
     }
     const chatId = ctx.msg.chatId;
@@ -1608,10 +1608,10 @@ async function handleInvite(args: string, ctx: CommandContext): Promise<void> {
       };
     });
     if (already) {
-      await reply(ctx, '✅ 当前群已在白名单里，无需重复添加。');
+      await reply(ctx, '✅ This group is already on the allowlist.');
       return;
     }
-    await reply(ctx, `✅ 已把当前群（\`${chatId}\`）加入响应群名单。`);
+    await reply(ctx, `✅ Added this group (\`${chatId}\`) to the allowed group list.`);
     return;
   }
 
@@ -1619,7 +1619,7 @@ async function handleInvite(args: string, ctx: CommandContext): Promise<void> {
   if (targets.length === 0) {
     await reply(
       ctx,
-      `❌ 没检测到 @ 的用户。请像这样发：\`/invite ${kind} @某人\`（注意 @ 用户不是 @ bot）。`,
+      `❌ No @mentioned user found. Send it like this: \`/invite ${kind} @someone\` (@mention the user, not the bot).`,
     );
     return;
   }
@@ -1644,10 +1644,10 @@ async function handleInvite(args: string, ctx: CommandContext): Promise<void> {
       [listKey]: [...list],
     };
   });
-  const label = kind === 'user' ? '用户白名单' : '管理员';
+  const label = kind === 'user' ? 'the user allowlist' : 'admins';
   const parts: string[] = [];
-  if (added.length > 0) parts.push(`✅ 已把 ${added.join('、')} 加入${label}。`);
-  if (already.length > 0) parts.push(`_${already.join('、')} 已经在${label}里，跳过。_`);
+  if (added.length > 0) parts.push(`✅ Added ${added.join(', ')} to ${label}.`);
+  if (already.length > 0) parts.push(`_${already.join(', ')} already in ${label}, skipped._`);
   await reply(ctx, parts.join('\n'));
 }
 
@@ -1661,17 +1661,17 @@ async function handleRemove(args: string, ctx: CommandContext): Promise<void> {
   if (!kind) {
     await reply(
       ctx,
-      '用法：\n' +
-        '• `/remove user @某人` — 移出用户白名单\n' +
-        '• `/remove admin @某人` — 移出管理员\n' +
-        '• `/remove group` — 把当前群移出响应群名单',
+      'Usage:\n' +
+        '• `/remove user @someone` — remove them from the user allowlist\n' +
+        '• `/remove admin @someone` — remove them from admins\n' +
+        '• `/remove group` — remove this group from the allowed group list',
     );
     return;
   }
 
   if (kind === 'group') {
     if (ctx.chatMode === 'p2p') {
-      await reply(ctx, '`/remove group` 请在要移除的群里发，私聊里没有可移除的群。');
+      await reply(ctx, 'Send `/remove group` in the group you want to remove. There is no group to remove in a DM.');
       return;
     }
     const chatId = ctx.msg.chatId;
@@ -1686,16 +1686,16 @@ async function handleRemove(args: string, ctx: CommandContext): Promise<void> {
       };
     });
     if (missing) {
-      await reply(ctx, '✅ 当前群本来就不在响应名单里，无需移除。');
+      await reply(ctx, '✅ This group is not on the allowed group list, so there is nothing to remove.');
       return;
     }
-    await reply(ctx, '✅ 已把当前群移出响应群名单。');
+    await reply(ctx, '✅ Removed this group from the allowed group list.');
     return;
   }
 
   const targets = mentionTargets(ctx);
   if (targets.length === 0) {
-    await reply(ctx, `请 @ 上要移除的人，例如：\`/remove ${kind} @某人\`。`);
+    await reply(ctx, `@mention the person to remove, e.g. \`/remove ${kind} @someone\`.`);
     return;
   }
 
@@ -1719,10 +1719,10 @@ async function handleRemove(args: string, ctx: CommandContext): Promise<void> {
       [listKey]: [...list],
     };
   });
-  const label = kind === 'user' ? '用户白名单' : '管理员';
+  const label = kind === 'user' ? 'the user allowlist' : 'admins';
   const parts: string[] = [];
-  if (removed.length > 0) parts.push(`✅ 已把 ${removed.join('、')} 移出${label}。`);
-  if (notThere.length > 0) parts.push(`${notThere.join('、')} 本来就不在${label}里，无需移除。`);
+  if (removed.length > 0) parts.push(`✅ Removed ${removed.join(', ')} from ${label}.`);
+  if (notThere.length > 0) parts.push(`${notThere.join(', ')} not in ${label}, nothing to remove.`);
   await reply(ctx, parts.join('\n'));
 }
 
@@ -1754,7 +1754,7 @@ async function handleConfig(args: string, ctx: CommandContext): Promise<void> {
     case 'cancel':
       return cancelConfig(ctx);
     default:
-      await reply(ctx, '用法:`/config`');
+      await reply(ctx, 'Usage: `/config`');
   }
 }
 
@@ -2072,15 +2072,15 @@ async function promptGroupMsgScopeIfMissing(ctx: CommandContext): Promise<void> 
 
 function configFailureMessage(step: string, rollbackFailed: boolean, larkCliPolicyApplied: boolean): string {
   if (rollbackFailed) {
-    return '保存失败，且 lark-cli 身份策略回滚失败。请执行 /status 检查当前状态。';
+    return 'Save failed, and rolling back the lark-cli identity policy also failed. Run /status to check the current state.';
   }
   if (larkCliPolicyApplied && step === 'config.save') {
-    return '保存失败，lark-cli 身份策略已回滚。请重新打开 /config 确认当前状态。';
+    return 'Save failed. The lark-cli identity policy was rolled back. Reopen /config to confirm the current state.';
   }
   if (step === 'config.lark-cli-policy') {
-    return 'lark-cli 身份策略未生效，未做任何修改。';
+    return 'The lark-cli identity policy did not take effect. Nothing was changed.';
   }
-  return '配置未写入，未做任何修改。';
+  return 'Config was not saved. Nothing was changed.';
 }
 
 function commandProfilePaths(ctx: CommandContext) {
@@ -2137,12 +2137,12 @@ async function handleMeeting(args: string, ctx: CommandContext): Promise<void> {
   if (!ctx.controls.profileConfig.meeting.enabled) {
     await reply(
       ctx,
-      '会议智能体未启用。在 `/config` 或 Web 控制台里开启「会议智能体」后重启 bot 即可。',
+      'The meeting agent is off. Turn on "Meeting agent" in `/config` or the web console, then restart the bot.',
     );
     return;
   }
   if (!manager) {
-    await reply(ctx, '会议能力未就绪（channel 未连接或启用后尚未重启）。');
+    await reply(ctx, 'Meetings are not ready (the channel is not connected, or the bot has not restarted since it was enabled).');
     return;
   }
 
@@ -2154,19 +2154,19 @@ async function handleMeeting(args: string, ctx: CommandContext): Promise<void> {
     case 'join': {
       const meetingNo = rest.replace(/\s/g, '');
       if (!isMeetingNo(meetingNo)) {
-        await reply(ctx, '用法：`/meeting join <9位会议号>`（只接受 9 位纯数字，不是会议链接）');
+        await reply(ctx, 'Usage: `/meeting join <9-digit meeting ID>` (9 digits only, not a meeting link)');
         return;
       }
       try {
         const session = await manager.join(meetingNo, { originChatId: ctx.msg.chatId });
         await reply(
           ctx,
-          `✅ 已入会 **${session.topic ?? meetingNo}**\n` +
-            `会议号 ${session.meetingNo} · 会中发 \`${ctx.controls.profileConfig.meeting.trigger} 你的问题\` 可以问我\n` +
-            '`/meeting notes` 总结 · `/meeting leave` 离会',
+          `✅ Joined **${session.topic ?? meetingNo}**\n` +
+            `Meeting ID ${session.meetingNo} · in the meeting, send \`${ctx.controls.profileConfig.meeting.trigger} your question\` to ask me\n` +
+            '`/meeting notes` to summarize · `/meeting leave` to leave',
         );
       } catch (err) {
-        await reply(ctx, `入会失败：${describeMeetingError(err)}`);
+        await reply(ctx, `Failed to join: ${describeMeetingError(err)}`);
       }
       return;
     }
@@ -2177,7 +2177,7 @@ async function handleMeeting(args: string, ctx: CommandContext): Promise<void> {
         return;
       }
       await manager.leave(picked.session.meetingId);
-      await reply(ctx, `✅ 已离会（会议号 ${picked.session.meetingNo}）`);
+      await reply(ctx, `✅ Left the meeting (ID ${picked.session.meetingNo})`);
       return;
     }
     case 'transcript': {
@@ -2192,9 +2192,9 @@ async function handleMeeting(args: string, ctx: CommandContext): Promise<void> {
       if (lines.length === 0) {
         await reply(
           ctx,
-          '字幕缓冲为空 —— agent 这次拿到的会议上下文是「（暂无字幕）」。\n' +
-            '注意：同一场会里 agent 复用一个会话，**早先轮次**的字幕仍留在它自己的对话历史里，' +
-            '所以它可能引用缓冲里已经没有的内容。`/new` 可以清掉该会话记忆。',
+          'The transcript buffer is empty, so the agent got no transcript as meeting context this time.\n' +
+            'Note: the agent reuses one session per meeting, so transcript lines from **earlier turns** are still in its own conversation history, ' +
+            'and it may quote things that are no longer in the buffer. `/new` clears that session memory.',
         );
         return;
       }
@@ -2202,7 +2202,7 @@ async function handleMeeting(args: string, ctx: CommandContext): Promise<void> {
       await reply(
         ctx,
         [
-          `字幕缓冲共 ${lines.length} 条${tail.length < lines.length ? `，以下是最近 ${tail.length} 条` : ''}：`,
+          `Transcript buffer: ${lines.length} line(s)${tail.length < lines.length ? `, showing the last ${tail.length}` : ''}:`,
           '```',
           ...tail,
           '```',
@@ -2217,7 +2217,7 @@ async function handleMeeting(args: string, ctx: CommandContext): Promise<void> {
         return;
       }
       const stopped = ctx.activeRuns.interrupt(meetingScopeId(picked.session.meetingId));
-      await reply(ctx, stopped ? '✅ 已中断该会议的当前任务。' : '该会议当前没有正在执行的任务。');
+      await reply(ctx, stopped ? '✅ Stopped the current task for this meeting.' : 'No task is running for this meeting.');
       return;
     }
     case 'notes':
@@ -2232,17 +2232,17 @@ async function handleMeeting(args: string, ctx: CommandContext): Promise<void> {
       const session = picked.session;
       const question =
         sub === 'notes'
-          ? '请基于以上会议字幕做一份简洁纪要：讨论了什么、结论、待办（如有）。'
+          ? 'Based on the meeting transcript above, write brief notes: what was discussed, decisions, and action items (if any).'
           : rest;
       if (!question) {
-        await reply(ctx, '用法：`/meeting ask <问题>`');
+        await reply(ctx, 'Usage: `/meeting ask <question>`');
         return;
       }
       if (!ctx.runExecutor) {
-        await reply(ctx, '当前上下文无法执行 agent（缺少 run executor）。');
+        await reply(ctx, 'Cannot run the agent here (no run executor).');
         return;
       }
-      await reply(ctx, sub === 'notes' ? '正在总结会议…' : '正在思考…');
+      await reply(ctx, sub === 'notes' ? 'Summarizing the meeting…' : 'Thinking…');
       try {
         const answer = await answerInMeeting(
           {
@@ -2260,9 +2260,9 @@ async function handleMeeting(args: string, ctx: CommandContext): Promise<void> {
           // summary somebody asked for in a DM would surprise the meeting.
           { deliver: 'caller' },
         );
-        await reply(ctx, answer || '（没有产生回答）');
+        await reply(ctx, answer || '(no answer)');
       } catch (err) {
-        await reply(ctx, `执行失败：${describeMeetingError(err)}`);
+        await reply(ctx, `Run failed: ${describeMeetingError(err)}`);
       }
       return;
     }
@@ -2270,14 +2270,14 @@ async function handleMeeting(args: string, ctx: CommandContext): Promise<void> {
       await reply(
         ctx,
         [
-          '用法：',
-          '`/meeting` — 状态',
-          '`/meeting join <9位会议号>` — 让 bot 入会',
-          '`/meeting leave [会议号]` — 离会',
-          '`/meeting notes [会议号]` — 基于字幕做纪要（只发给你）',
-          '`/meeting stop [会议号]` — 中断该会议卡住的任务',
-          '`/meeting transcript [会议号]` — 看 agent 实际拿到的字幕上下文',
-          '`/meeting ask <问题>` — 带会议上下文提问',
+          'Usage:',
+          '`/meeting` — status',
+          '`/meeting join <9-digit meeting ID>` — have the bot join',
+          '`/meeting leave [meeting ID]` — leave',
+          '`/meeting notes [meeting ID]` — notes from the transcript (sent only to you)',
+          '`/meeting stop [meeting ID]` — stop a stuck task in that meeting',
+          '`/meeting transcript [meeting ID]` — show the transcript context the agent actually got',
+          '`/meeting ask <question>` — ask with the meeting as context',
         ].join('\n'),
       );
   }
@@ -2304,12 +2304,12 @@ function pickMeetingSession(
     const found = manager.byMeetingNo(wanted);
     return found
       ? { ok: true, session: found }
-      : { ok: false, message: `没找到会议号 ${wanted} 对应的会议。用 \`/meeting\` 看当前在跟哪几场。` };
+      : { ok: false, message: `No meeting found with ID ${wanted}. Use \`/meeting\` to see which meetings I'm in.` };
   }
 
   const all = manager.all();
   if (all.length === 0) {
-    return { ok: false, message: '当前没有在跟的会议。先 `/meeting join <9位会议号>`。' };
+    return { ok: false, message: 'Not in any meetings. Start with `/meeting join <9-digit meeting ID>`.' };
   }
   if (all.length === 1) return { ok: true, session: all[0]! };
 
@@ -2317,10 +2317,10 @@ function pickMeetingSession(
   const fromHere = all.filter((s) => s.originChatId === ctx.msg.chatId);
   if (fromHere.length === 1) return { ok: true, session: fromHere[0]! };
 
-  const list = all.map((s) => `- ${s.meetingNo}${s.topic ? `（${s.topic}）` : ''}`).join('\n');
+  const list = all.map((s) => `- ${s.meetingNo}${s.topic ? ` (${s.topic})` : ''}`).join('\n');
   return {
     ok: false,
-    message: `当前在跟 ${all.length} 场会议，请指定会议号：\n${list}\n\n例如 \`/meeting notes ${all[0]!.meetingNo}\``,
+    message: `I'm in ${all.length} meetings. Specify a meeting ID:\n${list}\n\nFor example: \`/meeting notes ${all[0]!.meetingNo}\``,
   };
 }
 
@@ -2328,17 +2328,17 @@ async function replyMeetingStatus(ctx: CommandContext, manager: MeetingManager):
   const sessions = manager.list();
   const push = manager.pushHealth();
   const pushLine = push.hooked
-    ? `推送：已挂载，累计收到 ${push.received} 条${push.received === 0 ? '（尚未收到，可能还没在后台订阅 vc.bot.* 事件）' : ''}`
-    : `推送：未挂载（${push.reason ?? '未知原因'}），仅靠轮询`;
+    ? `Push: connected, ${push.received} event(s) received${push.received === 0 ? ' (none yet; vc.bot.* events may not be subscribed in the developer console)' : ''}`
+    : `Push: not connected (${push.reason ?? 'unknown reason'}), polling only`;
 
   if (sessions.length === 0) {
-    await reply(ctx, [`当前没有在跟的会议。`, pushLine, '', '`/meeting join <9位会议号>` 开始。'].join('\n'));
+    await reply(ctx, [`Not in any meetings.`, pushLine, '', 'Start with `/meeting join <9-digit meeting ID>`.'].join('\n'));
     return;
   }
   const lines = sessions.map(
     (s) =>
-      `- **${s.topic ?? s.meetingNo}**（${s.meetingNo}）· 来源 ${s.source === 'push' ? '推送' : '轮询'}` +
-      ` · 字幕 ${s.transcriptLines} 条 · 参会 ${s.participants} 人`,
+      `- **${s.topic ?? s.meetingNo}** (${s.meetingNo}) · source: ${s.source === 'push' ? 'push' : 'polling'}` +
+      ` · ${s.transcriptLines} transcript line(s) · ${s.participants} participant(s)`,
   );
-  await reply(ctx, [`正在跟 ${sessions.length} 场会议：`, ...lines, '', pushLine].join('\n'));
+  await reply(ctx, [`In ${sessions.length} meeting(s):`, ...lines, '', pushLine].join('\n'));
 }
