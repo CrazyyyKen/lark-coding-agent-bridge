@@ -191,6 +191,7 @@ export function helpCard(agentName = 'Agent', opts: { personalLogin?: boolean } 
               '- `/logout` — 删除你的登录',
             ]
           : []),
+        '- `/schedule add <时间> <任务>` — 定时任务（私聊），如 `/schedule add weekdays 08:30 整理收件箱`；`/schedule list` 查看',
         '- `/new` `/reset` — 清空当前 chat 的会话',
         '- `/new chat [name]` — 新建群+新会话，自动拉你进群',
         '- `/resume [N]` — 列出并恢复历史会话（最多 N 条）',

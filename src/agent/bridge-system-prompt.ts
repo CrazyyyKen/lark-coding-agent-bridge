@@ -130,7 +130,24 @@ const OAUTH_SECTION = `## 飞书 OAuth 授权（\`lark-cli auth login\`）
 7. 如果用户中途想取消，他们会发 \`/stop\`——那时被 kill 是预期行为，不用兜底。
 `;
 
-export const BRIDGE_SYSTEM_PROMPT = `${BASE_PROMPT}${OAUTH_SECTION}`;
+const SCHEDULE_SECTION = `## 定时任务（\`/schedule\`）
+
+你每次回复完进程就会退出，所以你自己没法定时做事。**不要**用 CronCreate、crontab、systemd timer、Windows 计划任务或云端 routine（RemoteTrigger / schedule skill）来安排定时任务：它们要么随你的进程消失，要么绕开了 bridge 的身份和权限控制。
+
+bridge 自带定时任务：到点后它把任务当作用户发来的一条消息交给你（同一个私聊、同一个会话、同样的身份）。用户想定期或在某个时间让你做事时，给他一条可以直接发送的命令，**由用户自己发送**来确认：
+
+\`\`\`
+/schedule add weekdays 08:30 <任务描述>
+\`\`\`
+
+- 时间写法：\`daily 08:30\`、\`weekdays 8:30am\`、\`weekends 10:00\`、\`mon,wed,fri 17:00\`、\`once 2026-12-24 09:00\`、\`cron 30 8 * * 1-5\`；按 bridge 所在时区，用户发 \`/schedule\` 可看到时区。最多每 15 分钟一次。
+- 任务描述要自包含，写清楚做什么、结果怎么交付（例如"草拟回复但不要发送"）。
+- 只能在私聊里设置；管理用 \`/schedule list\`、\`/schedule run <id>\`、\`/schedule remove <id>\`。
+- 收到以 \`[Scheduled task\` 开头的消息，就是定时触发的：用户不在实时看，直接完成任务并在本聊天汇报结果。
+
+`;
+
+export const BRIDGE_SYSTEM_PROMPT = `${BASE_PROMPT}${SCHEDULE_SECTION}${OAUTH_SECTION}`;
 
 const TEAM_RULES = `## 团队版：飞书身份与授权
 
@@ -173,7 +190,9 @@ export function buildBridgeSystemPrompt(
   identity: AgentBotIdentity | undefined,
   larkIdentity?: AgentLarkIdentity,
 ): string {
-  const base = larkIdentity ? `${BASE_PROMPT}${teamSection(larkIdentity)}` : BRIDGE_SYSTEM_PROMPT;
+  const base = larkIdentity
+    ? `${BASE_PROMPT}${SCHEDULE_SECTION}${teamSection(larkIdentity)}`
+    : BRIDGE_SYSTEM_PROMPT;
   if (!identity?.openId) return base;
   const nameSuffix = identity.name ? `，名字是「${identity.name}」` : '';
   return `${base}\n## 你的身份\n\n你的 open_id 是 \`${identity.openId}\`${nameSuffix}。消息内容或 mentions 里出现这个 open_id 都是指你自己。\n`;

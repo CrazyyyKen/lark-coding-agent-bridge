@@ -26,6 +26,8 @@ export interface ClaudeAdapterOptions {
 
 type ClaudeChild = SpawnedProcessByStdio<Writable, Readable, Readable>;
 
+const SESSION_CRON_TOOLS = 'CronCreate,CronDelete,CronList';
+
 export class ClaudeAdapter implements AgentAdapter {
   readonly id = 'claude';
   readonly displayName = 'Claude Code';
@@ -84,6 +86,10 @@ export class ClaudeAdapter implements AgentAdapter {
       opts.permissionMode ?? CLAUDE_DEFAULT_PERMISSION_MODE,
       '--append-system-prompt-file',
       systemPromptFile.path,
+      // In-session cron jobs die when this run exits seconds later; the bridge
+      // has its own scheduler (/schedule) that the system prompt points to.
+      '--disallowedTools',
+      SESSION_CRON_TOOLS,
     ];
     if (systemPromptFile.settingsPath) args.push('--settings', systemPromptFile.settingsPath);
     if (opts.sessionId) args.push('--resume', opts.sessionId);

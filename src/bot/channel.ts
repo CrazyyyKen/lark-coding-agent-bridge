@@ -58,6 +58,9 @@ import { attachMeetingAgent, summarizeEndedMeeting } from '../meeting/orchestrat
 import type { ScopeContext } from '../policy/run-policy';
 import { createOwnerRefreshController } from '../policy/owner';
 import { RunExecutor } from '../runtime/run-executor';
+import { Scheduler, type FireResult } from '../scheduler/scheduler';
+import { formatRunTime, isValidTimeZone } from '../scheduler/spec';
+import { ScheduleStore, type Schedule } from '../scheduler/store';
 import type { SessionCatalog } from '../session/catalog';
 import type { SessionStore } from '../session/store';
 import type { WorkspaceStore } from '../workspace/store';
@@ -535,6 +538,7 @@ export async function startChannel(deps: StartChannelDeps): Promise<BridgeChanne
   });
   await ownerRefresh.start();
   const knownChatsRefresh = startKnownChatsRefreshTimer(channel, controls);
+  const scheduler = await startScheduler(channel, pending, controls, deps.appPaths);
 
   const identity = channel.botIdentity;
   // Late-bind the bot's own IM identity into the agent adapter so the system
@@ -574,6 +578,8 @@ export async function startChannel(deps: StartChannelDeps): Promise<BridgeChanne
       activeRuns.pauseNewRuns('bridge-disconnect');
       ownerRefresh.stop();
       knownChatsRefresh.stop();
+      scheduler?.stop();
+      controls.scheduler = undefined;
       keepalive.stop();
       // Stop meeting timers but stay in the meetings: /reconnect tears the
       // channel down and rebuilds it, and auto-leaving every meeting on a
@@ -588,6 +594,7 @@ export async function startChannel(deps: StartChannelDeps): Promise<BridgeChanne
         sessionCatalog?.flush(),
         callbackNonceStore?.flush(),
         workspaces.flush(),
+        scheduler?.flush(),
       ]);
       if (stopAllResult.status === 'rejected') {
         log.fail('disconnect', stopAllResult.reason, { step: 'stopAll' });
@@ -602,6 +609,100 @@ export async function startChannel(deps: StartChannelDeps): Promise<BridgeChanne
       }
     },
   };
+}
+
+/**
+ * Scheduled tasks (/schedule), kept in the profile folder. Due tasks are fed
+ * into the owner's DM as a message from them, so they take the normal path:
+ * access check, per-person login, the DM's session and reply rendering.
+ */
+async function startScheduler(
+  channel: LarkChannel,
+  pending: PendingQueue,
+  controls: Controls,
+  appPaths: StartChannelDeps['appPaths'],
+): Promise<Scheduler | undefined> {
+  if (!appPaths?.profileDir) return undefined;
+  const store = new ScheduleStore(join(appPaths.profileDir, 'schedules.json'));
+  try {
+    await store.load();
+  } catch (err) {
+    log.fail('scheduler', err, { step: 'load' });
+    return undefined;
+  }
+  const scheduler = new Scheduler({
+    store,
+    timeZone: schedulerTimeZone(),
+    fire: (schedule) => fireScheduledTask(channel, pending, controls, schedule),
+    notifyMissed: async (schedule, dueAt) => {
+      await channel.send(schedule.chatId, {
+        markdown:
+          `⏰ I was offline at ${formatRunTime(dueAt, schedule.timeZone)}, so I skipped your scheduled task ` +
+          `\`${schedule.id}\` (${schedule.label}). Send \`/schedule run ${schedule.id}\` to run it now.`,
+      });
+    },
+  });
+  controls.scheduler = scheduler;
+  scheduler.start();
+  return scheduler;
+}
+
+/** The host's zone unless LARK_CHANNEL_TIMEZONE names another (e.g. users elsewhere). */
+function schedulerTimeZone(): string {
+  const configured = process.env.LARK_CHANNEL_TIMEZONE?.trim();
+  if (configured && isValidTimeZone(configured)) return configured;
+  if (configured) log.warn('scheduler', 'invalid-timezone', { configured });
+  return Intl.DateTimeFormat().resolvedOptions().timeZone;
+}
+
+async function fireScheduledTask(
+  channel: LarkChannel,
+  pending: PendingQueue,
+  controls: Controls,
+  schedule: Schedule,
+): Promise<FireResult> {
+  // Access can change after the task was set up (removed from the app's
+  // availability, bot switched to personal mode): check again every time.
+  const access = canUseDm(controls.profileConfig, controls, schedule.ownerId);
+  if (!access.ok) {
+    log.info('scheduler', 'skip-not-allowed', {
+      id: schedule.id,
+      owner: schedule.ownerId.slice(-6),
+      reason: access.reason,
+    });
+    return 'not-allowed';
+  }
+  // A real message to anchor the run on: replies, reactions and the progress
+  // bubble all hang off a message id, and the owner sees what started it.
+  const posted = await channel.send(schedule.chatId, {
+    markdown: `⏰ **Scheduled task** \`${schedule.id}\` · ${schedule.label}\n> ${schedule.prompt}`,
+  });
+  const msg: NormalizedMessage = {
+    messageId: posted.messageId,
+    chatId: schedule.chatId,
+    chatType: 'p2p',
+    senderId: schedule.ownerId,
+    ...(schedule.ownerName ? { senderName: schedule.ownerName } : {}),
+    content: scheduledTaskPrompt(schedule),
+    rawContentType: 'text',
+    resources: [],
+    mentions: [],
+    mentionAll: false,
+    mentionedBot: false,
+    createTime: Date.now(),
+  };
+  pending.push(schedule.chatId, msg);
+  return 'ran';
+}
+
+export function scheduledTaskPrompt(schedule: Schedule): string {
+  return [
+    `[Scheduled task ${schedule.id} · ${schedule.label} (${schedule.timeZone}), set up by the user with /schedule. ` +
+      "They aren't watching live: do the task and report the result in this chat. " +
+      'Sending, approving, sharing or deleting anything on their behalf still needs their confirmation ' +
+      'in a later message, unless the task itself explicitly asks for it.]',
+    schedule.prompt,
+  ].join('\n');
 }
 
 function startKnownChatsRefreshTimer(

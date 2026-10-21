@@ -9,6 +9,8 @@ import type { AgentAdapter, AgentLarkIdentity } from '../agent/types';
 import type { ActiveRuns } from '../bot/active-runs';
 import type { PerUserLogins } from '../lark-cli/per-user-login';
 import { handleLogin, handleLogout, handleWhoami } from './user-login';
+import { handleSchedule } from './schedule';
+import type { Scheduler } from '../scheduler/scheduler';
 import {
   accountCurrentCard,
   accountFailureCard,
@@ -116,6 +118,8 @@ export interface Controls {
   meeting?: MeetingManager;
   /** Team mode only: whose Lark identity runs may use. Late-bound by startChannel. */
   teamLogin?: TeamLogin;
+  /** Scheduled tasks; present while the channel is connected. Late-bound by startChannel. */
+  scheduler?: Scheduler;
 }
 
 export interface TeamLogin {
@@ -201,6 +205,8 @@ const handlers: Record<string, Handler> = {
   '/login': handleLogin,
   '/logout': handleLogout,
   '/whoami': handleWhoami,
+  // Open to everyone: a task always belongs to, and runs as, its sender.
+  '/schedule': handleSchedule,
 };
 
 /**
