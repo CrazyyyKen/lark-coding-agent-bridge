@@ -134,7 +134,7 @@ Owner's Lark account: <their name> · token valid · N permissions granted
 Then the person DMs their bot in Lark:
 
 - `hi` → a reply card
-- `/status` → agent `claude`, access `workspace`
+- `/status` → agent `claude`, access `full` (personal bots; team bots show `workspace`)
 - "What's on my calendar today?" → their calendar, without the bot asking for authorization
 
 ## 7. Compare after a day
@@ -259,6 +259,7 @@ Converting someone's personal assistant into a department bot isn't recommended:
 | Pause a bot, keep everything | `docker stop lark-bot-<name>` |
 | Reconnect the owner's Lark account | `./lark-bots.sh authorize <name>` (or `--domain calendar,mail` for fewer permissions) |
 | Change who a bot answers | `./lark-bots.sh set-mode <name> <personal\|team>` |
+| Change how much Claude Code may do | `./lark-bots.sh set-access <name> <full\|workspace\|read-only>` (personal bots default to `full`: no permission prompts, keeps memory; team bots can't be `full`) |
 | Update the bridge, Claude Code and lark-cli | `./lark-bots.sh update` (a build: run it at a quiet time) |
 | Remove a bot, keep its data | `./lark-bots.sh remove <name>` |
 | Remove a bot and its data | `./lark-bots.sh remove <name> --purge` |

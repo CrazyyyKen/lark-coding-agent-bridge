@@ -11,7 +11,10 @@
 #                                        the bot act as them. Default: every user permission
 #                                        enabled on the app; narrow with e.g. --domain calendar,mail
 #   ./lark-bots.sh set-mode <name> <personal|team>
-#                                        Change who the bot answers (see --mode below)
+#                                        Change who the bot answers (see --mode below); also
+#                                        sets the matching access (personal: full, team: workspace)
+#   ./lark-bots.sh set-access <name> <full|workspace|read-only>
+#                                        Change how much Claude Code may do (team bots: not full)
 #   ./lark-bots.sh status <name>         One bot: container state, resources, owner's Lark account
 #   ./lark-bots.sh list                  Show every bot, its state and memory use
 #   ./lark-bots.sh logs <name>           Follow a bot's log
@@ -29,7 +32,9 @@
 #   --mode <personal|team>   personal: answers only the app owner, may use the owner's Lark
 #                            login. team: anyone may use it, bot identity only. Default: personal
 #   --access <workspace|read-only|full>
-#                            Claude Code permission level. Default: workspace
+#                            Claude Code permission level. Default: full for personal bots (no
+#                            permission prompts, keeps memory), workspace for team bots. Team bots
+#                            can't be full: one member's run could reach another member's login.
 
 set -euo pipefail
 
@@ -64,6 +69,45 @@ bot_names() {
 
 ensure_image() {
   docker image inspect "$IMAGE" >/dev/null 2>&1 || cmd_build
+}
+
+# A personal bot serves only its owner, so it runs Claude Code without permission prompts
+# (no one can answer them in a chat) and may keep memory. A team bot serves many people:
+# full access would let one member's run read another member's login folder, because
+# permission rules only bind Claude's file tools, not the shell.
+default_access() { [ "$1" = team ] && echo workspace || echo full; }
+
+check_access() {
+  local mode="$1" access="$2"
+  [[ "$access" =~ ^(workspace|read-only|full)$ ]] || die "--access must be workspace, read-only or full"
+  [ "$mode" = team ] && [ "$access" = full ] \
+    && die "a team bot can't have full access: one member could reach another member's Lark login"
+  return 0
+}
+
+# The bot's workspace permission rules for an access level. Full access drops the blanket
+# "no writes under ~/.claude" so the bot can keep memory; credentials stay off-limits.
+settings_file() { [ "$1" = full ] && echo workspace-settings-personal.json || echo workspace-settings.json; }
+
+# Run in the container with the settings file on stdin.
+WRITE_SETTINGS='mkdir -p "$HOME/workspace/.claude" && cat > "$HOME/workspace/.claude/settings.json"'
+
+# Set a bot's mode and access in its config and swap in the matching permission rules.
+# The bot must be running; it picks the change up on the restart that follows.
+apply_profile() {
+  local name="$1" mode="$2" access="$3" c="lark-bot-$1"
+  docker exec "$c" node -e '
+    const fs = require("fs");
+    const [file, name, mode, access] = process.argv.slice(1);
+    const cfg = JSON.parse(fs.readFileSync(file, "utf8"));
+    const p = cfg.profiles && cfg.profiles[name];
+    if (!p) { console.error(`profile ${name} not found in ${file}`); process.exit(1); }
+    p.mode = mode;
+    p.permissions = { ...(p.permissions || {}), defaultAccess: access, maxAccess: access };
+    fs.writeFileSync(file + ".tmp", JSON.stringify(cfg, null, 2) + "\n", { mode: 0o600 });
+    fs.renameSync(file + ".tmp", file);
+  ' "$CFG" "$name" "$mode" "$access"
+  docker exec -i "$c" sh -c "$WRITE_SETTINGS" < "$DIR/$(settings_file "$access")"
 }
 
 # ─── Commands ────────────────────────────────────────────────────────────────
@@ -120,7 +164,7 @@ EOF
 }
 
 cmd_add() {
-  local name="" app_id="" tenant="lark" mode="personal" access="workspace"
+  local name="" app_id="" tenant="lark" mode="personal" access=""
   while [ $# -gt 0 ]; do
     case "$1" in
       --app-id) app_id="${2:-}"; shift 2 ;;
@@ -134,7 +178,8 @@ cmd_add() {
   check_name "$name"
   [[ "$tenant" =~ ^(lark|feishu)$ ]] || die "--tenant must be lark or feishu"
   [[ "$mode" =~ ^(personal|team)$ ]] || die "--mode must be personal or team"
-  [[ "$access" =~ ^(workspace|read-only|full)$ ]] || die "--access must be workspace, read-only or full"
+  [ -n "$access" ] || access="$(default_access "$mode")"
+  check_access "$mode" "$access"
   [ ! -e "$DIR/bots/$name.env" ] || die "bot '$name' already exists"
   docker volume inspect "lark-bot-$name-home" >/dev/null 2>&1 \
     && die "a data volume lark-bot-$name-home is left from an earlier bot; remove it with ./lark-bots.sh remove $name --purge"
@@ -184,6 +229,7 @@ cmd_add() {
     fs.writeFileSync(file + ".tmp", JSON.stringify(cfg, null, 2) + "\n", { mode: 0o600 });
     fs.renameSync(file + ".tmp", file);
   ' "$CFG" "$name" "$mode" "$access"
+  bot_compose "$name" run --rm -T bot sh -c "$WRITE_SETTINGS" < "$DIR/$(settings_file "$access")"
   echo "ok"
 
   step "Claude sign-in"
@@ -293,18 +339,13 @@ console) and silently ignores everyone else. The owner can then connect their ow
 account with ./lark-bots.sh authorize $name.
 EOF
   fi
+  local access
+  access="$(default_access "$mode")"
+  echo
+  echo "Claude Code access becomes '$access' (see ./lark-bots.sh set-access)."
   confirm "Switch $name to $mode?" || die "cancelled"
 
-  docker exec "$c" node -e '
-    const fs = require("fs");
-    const [file, name, mode] = process.argv.slice(1);
-    const cfg = JSON.parse(fs.readFileSync(file, "utf8"));
-    const p = cfg.profiles && cfg.profiles[name];
-    if (!p) { console.error(`profile ${name} not found in ${file}`); process.exit(1); }
-    p.mode = mode;
-    fs.writeFileSync(file + ".tmp", JSON.stringify(cfg, null, 2) + "\n", { mode: 0o600 });
-    fs.renameSync(file + ".tmp", file);
-  ' "$CFG" "$name" "$mode"
+  apply_profile "$name" "$mode" "$access"
 
   if [ -n "$owner" ]; then
     bot_lark_cli "$name" auth logout >/dev/null 2>&1 || true
@@ -325,6 +366,24 @@ EOF
   else
     echo "Next: ./lark-bots.sh authorize $name"
   fi
+}
+
+cmd_set_access() {
+  local name="${1:-}" access="${2:-}"
+  check_name "$name"
+  [ -n "$access" ] || die "usage: ./lark-bots.sh set-access <name> <full|workspace|read-only>"
+  [ -e "$DIR/bots/$name.env" ] || die "no bot named $name"
+  local c="lark-bot-$name"
+  [ "$(docker inspect -f '{{.State.Running}}' "$c" 2>/dev/null)" = true ] \
+    || die "$c is not running; start it with ./lark-bots.sh restart $name"
+  local mode
+  mode="$(profile_mode "$name")" || die "couldn't read $name's settings"
+  check_access "$mode" "$access"
+
+  step "Setting $name ($mode) to access=$access"
+  apply_profile "$name" "$mode" "$access"
+  bot_compose "$name" up -d --force-recreate >/dev/null 2>&1
+  echo "restarted: $name now runs with access=$access"
 }
 
 # lark-cli in a bot's container, with the same environment the bridge gives it
@@ -573,6 +632,7 @@ case "${1:-}" in
   add)        shift; cmd_add "$@" ;;
   authorize)  shift; cmd_authorize "$@" ;;
   set-mode)   shift; cmd_set_mode "$@" ;;
+  set-access) shift; cmd_set_access "$@" ;;
   status)     shift; cmd_status "$@" ;;
   list)       shift; cmd_list ;;
   logs)       shift; cmd_logs "$@" ;;

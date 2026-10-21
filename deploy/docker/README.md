@@ -61,6 +61,7 @@ Then the owner DMs the bot `hi` and `/status`.
 | Follow a log | `./lark-bots.sh logs <name>` |
 | Restart | `./lark-bots.sh restart <name>` or `restart all` |
 | Change who a bot answers | `./lark-bots.sh set-mode <name> <personal\|team>` |
+| Change how much Claude Code may do | `./lark-bots.sh set-access <name> <full\|workspace\|read-only>` |
 | Update the bridge, Claude Code and lark-cli | `./lark-bots.sh update` |
 | Remove (keep data / delete data) | `./lark-bots.sh remove <name>` / `remove <name> --purge` |
 | Remove everything | `remove --purge` each bot, then `docker image rm lark-bot:latest` |
