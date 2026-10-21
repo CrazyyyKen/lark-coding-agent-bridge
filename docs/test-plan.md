@@ -149,7 +149,7 @@ Since 2026-10-21 every server bot (`weileong`, `gdex-ai`, `joeee`, `ken`) defaul
 
 | # | Do | Expect | ✓ / notes |
 |---|---|---|---|
-| 5.1 | Ask each of the 4 bots for its model ID | `claude-sonnet-5-5` | |
+| 5.1 | `/new` first, then ask each of the 4 bots for its model ID | `claude-sonnet-5-5`. Without `/new`, a conversation started before the switch keeps its old model (Opus 5.5). | |
 | 5.2 | `docker exec lark-bot-<name> cat /home/bot/.claude/settings.json` for each bot | Contains `"model": "claude-sonnet-5-5"` | |
 | 5.3 | *After deploy:* `/config`, open the model picker | English labels: Use default (not set), Fable 5.1 (needs extra usage credits), Opus 5.5 (latest), Opus 4.8, Opus 4.7, Sonnet 5.5 (latest), Sonnet 5, Sonnet 4.6, Haiku 5.5 (latest), Haiku 4.5, Opus Plan | |
 | 5.4 | Pick **Opus 5.5**, save, ask for the model ID | `claude-opus-5-5`. Saved card shows Opus 5.5. | |
@@ -194,7 +194,7 @@ The image will build from this repo instead of npm. Rebuilding and restarting ke
 | 7.6 | `/resume` | Sessions from before the deploy still listed and resumable | |
 | 7.7 | `/schedule list` | Tasks from before the deploy still there with correct next run | |
 | 7.8 | Send a message during the 10–30 s restart | Note whether it's answered after the restart or lost (if lost, tell users to resend) | |
-| 7.9 | Start a long task, restart mid-run | Reply is cut off; `/resume` or asking again works | |
+| 7.9 | Start a long task, restart mid-run | If the bot had already started answering, the reply is cut off. If not, **nothing at all** appears (seen 2026-10-21): the user must resend. Asking again works. | |
 | 7.10 | `/config` settings after restart | Same as before the deploy (mode, access, model) | |
 | 7.11 | Claude Code version: `docker exec lark-bot-<name> claude --version` | Note it. The rebuild installs the latest Claude Code unless pinned; check nothing behaves differently. | |
 
