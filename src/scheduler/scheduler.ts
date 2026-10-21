@@ -27,6 +27,21 @@ export interface SchedulerOptions {
 
 export type AddResult = { ok: true; schedule: Schedule } | { ok: false; error: string };
 
+export type ScheduleInput = ParsedSchedule & { ownerId: string; ownerName?: string; chatId: string };
+
+/** A task the agent suggested, waiting for its requester to tap "Create schedule". */
+export interface ScheduleProposal extends ScheduleInput {
+  id: string;
+  createdAt: number;
+}
+
+export type ProposeResult =
+  | { ok: true; proposal: ScheduleProposal; nextRunAt: number }
+  | { ok: false; error: string };
+
+/** How long a suggestion card can still be confirmed. */
+export const PROPOSAL_TTL_MS = 24 * 60 * 60 * 1000;
+
 /**
  * Bridge-side scheduled tasks. The agent process exits after every reply, so
  * nothing inside it can keep a timer; the bridge stays up and, when a task is
@@ -37,6 +52,7 @@ export class Scheduler {
   private timer: ReturnType<typeof setInterval> | undefined;
   private ticking = false;
   private readonly now: () => number;
+  private readonly proposals = new Map<string, ScheduleProposal>();
 
   constructor(private readonly opts: SchedulerOptions) {
     this.now = opts.now ?? Date.now;
@@ -68,24 +84,11 @@ export class Scheduler {
     return schedule?.ownerId === ownerId ? schedule : undefined;
   }
 
-  add(input: ParsedSchedule & { ownerId: string; ownerName?: string; chatId: string }): AddResult {
-    if (input.prompt.length > MAX_PROMPT_CHARS) {
-      return { ok: false, error: `That task is too long (max ${MAX_PROMPT_CHARS} characters).` };
-    }
-    if (this.opts.store.listFor(input.ownerId).length >= MAX_SCHEDULES_PER_USER) {
-      return {
-        ok: false,
-        error: `You already have ${MAX_SCHEDULES_PER_USER} scheduled tasks. Remove one first (\`/schedule list\`).`,
-      };
-    }
+  add(input: ScheduleInput): AddResult {
     const now = this.now();
-    const next = nextRunAt(input.when, this.opts.timeZone, now);
-    if (next === undefined) {
-      return { ok: false, error: 'That time never comes up again — is the date in the past?' };
-    }
-    if (shortestInterval(input.when, this.opts.timeZone, now) < MIN_INTERVAL_MS) {
-      return { ok: false, error: 'Scheduled tasks can run at most once every 15 minutes.' };
-    }
+    const checked = this.check(input, now);
+    if (!checked.ok) return checked;
+    const next = checked.nextRunAt;
     const schedule: Schedule = {
       id: this.newId(),
       ownerId: input.ownerId,
@@ -102,6 +105,45 @@ export class Scheduler {
     this.opts.store.add(schedule);
     log.info('scheduler', 'added', { id: schedule.id, owner: schedule.ownerId.slice(-6), label: schedule.label });
     return { ok: true, schedule };
+  }
+
+  /**
+   * Hold a task the agent suggested until its requester taps "Create
+   * schedule". Checked now like a real task, so the card never offers
+   * something `add` would refuse. Held in memory only: a restart expires it.
+   */
+  propose(input: ScheduleInput): ProposeResult {
+    const now = this.now();
+    this.pruneProposals(now);
+    const checked = this.check(input, now);
+    if (!checked.ok) return checked;
+    const proposal: ScheduleProposal = { ...input, id: this.newProposalId(), createdAt: now };
+    this.proposals.set(proposal.id, proposal);
+    return { ok: true, proposal, nextRunAt: checked.nextRunAt };
+  }
+
+  /** Create the suggested task. Only its requester can, and only once. */
+  confirm(ownerId: string, proposalId: string): AddResult {
+    this.pruneProposals(this.now());
+    const proposal = this.proposals.get(proposalId);
+    if (!proposal) {
+      return { ok: false, error: 'This suggestion was already used or has expired. Ask me again, or use `/schedule add`.' };
+    }
+    if (proposal.ownerId !== ownerId) {
+      return { ok: false, error: 'Only the person who asked for this schedule can create it.' };
+    }
+    const { id: _id, createdAt: _createdAt, ...input } = proposal;
+    const result = this.add(input);
+    if (result.ok) this.proposals.delete(proposalId);
+    return result;
+  }
+
+  /** Drop a suggestion ("Not now"). False if it isn't the requester's. */
+  dismiss(ownerId: string, proposalId: string): boolean {
+    const proposal = this.proposals.get(proposalId);
+    if (!proposal || proposal.ownerId !== ownerId) return false;
+    this.proposals.delete(proposalId);
+    return true;
   }
 
   remove(ownerId: string, id: string): boolean {
@@ -176,6 +218,39 @@ export class Scheduler {
     } catch (err) {
       log.fail('scheduler', err, { step: 'fire', id: schedule.id });
       return 'failed';
+    }
+  }
+
+  private check(input: ScheduleInput, now: number): { ok: true; nextRunAt: number } | { ok: false; error: string } {
+    if (input.prompt.length > MAX_PROMPT_CHARS) {
+      return { ok: false, error: `That task is too long (max ${MAX_PROMPT_CHARS} characters).` };
+    }
+    if (this.opts.store.listFor(input.ownerId).length >= MAX_SCHEDULES_PER_USER) {
+      return {
+        ok: false,
+        error: `You already have ${MAX_SCHEDULES_PER_USER} scheduled tasks. Remove one first (\`/schedule list\`).`,
+      };
+    }
+    const next = nextRunAt(input.when, this.opts.timeZone, now);
+    if (next === undefined) {
+      return { ok: false, error: 'That time never comes up again — is the date in the past?' };
+    }
+    if (shortestInterval(input.when, this.opts.timeZone, now) < MIN_INTERVAL_MS) {
+      return { ok: false, error: 'Scheduled tasks can run at most once every 15 minutes.' };
+    }
+    return { ok: true, nextRunAt: next };
+  }
+
+  private pruneProposals(now: number): void {
+    for (const [id, proposal] of this.proposals) {
+      if (now - proposal.createdAt > PROPOSAL_TTL_MS) this.proposals.delete(id);
+    }
+  }
+
+  private newProposalId(): string {
+    for (;;) {
+      const id = `p${randomBytes(4).toString('hex')}`;
+      if (!this.proposals.has(id)) return id;
     }
   }
 

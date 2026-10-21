@@ -77,6 +77,25 @@ export function parseScheduleArgs(args: string): ParsedSchedule | { error: strin
   return { when, label, prompt };
 }
 
+/** Most "Create schedule" cards one agent reply can produce. */
+export const MAX_SUGGESTIONS_PER_REPLY = 3;
+
+/**
+ * The arguments of `/schedule add <when> <task>` lines in an agent reply, as
+ * the system prompt asks it to write them: alone on a line, usually in a code
+ * block, maybe in inline code or after a list marker.
+ */
+export function findScheduleSuggestions(text: string): string[] {
+  const found: string[] = [];
+  for (const line of text.split('\n')) {
+    const m = /^\s*(?:[-*>]\s*)?`?\/schedule\s+add\s+(.+?)`?\s*$/i.exec(line);
+    const args = m?.[1]?.trim();
+    if (args && !found.includes(args)) found.push(args);
+    if (found.length >= MAX_SUGGESTIONS_PER_REPLY) break;
+  }
+  return found;
+}
+
 /** The next time `when` is due strictly after `after` (epoch ms), or undefined. */
 export function nextRunAt(when: ScheduleWhen, timeZone: string, after: number): number | undefined {
   if (when.kind === 'once') {

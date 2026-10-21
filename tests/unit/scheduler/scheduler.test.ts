@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { CATCH_UP_MS, MAX_SCHEDULES_PER_USER, Scheduler, type FireResult } from '../../../src/scheduler/scheduler';
+import { CATCH_UP_MS, MAX_SCHEDULES_PER_USER, PROPOSAL_TTL_MS, Scheduler, type FireResult } from '../../../src/scheduler/scheduler';
 import { parseScheduleArgs, type ParsedSchedule } from '../../../src/scheduler/spec';
 import { ScheduleStore, type Schedule } from '../../../src/scheduler/store';
 
@@ -178,5 +178,35 @@ describe('Scheduler', () => {
     await h.scheduler.tick();
     expect(h.store.get(s.id)?.lastResult).toBe('failed');
     expect(h.store.get(s.id)?.nextRunAt).toBeGreaterThan(s.nextRunAt!);
+  });
+  it("creates a suggested task only when its requester confirms, and only once", async () => {
+    const h = await harness();
+    const proposed = h.scheduler.propose({ ...parsed("weekdays 08:30 Triage"), ownerId: "ou_alice", chatId: "oc_alice" });
+    if (!proposed.ok) throw new Error(proposed.error);
+    expect(h.scheduler.listFor("ou_alice")).toEqual([]);
+
+    expect(h.scheduler.confirm("ou_bob", proposed.proposal.id)).toMatchObject({ ok: false });
+    const confirmed = h.scheduler.confirm("ou_alice", proposed.proposal.id);
+    expect(confirmed).toMatchObject({ ok: true, schedule: { ownerId: "ou_alice", prompt: "Triage" } });
+    expect(h.scheduler.listFor("ou_alice")).toHaveLength(1);
+    // A second tap does not create a duplicate.
+    expect(h.scheduler.confirm("ou_alice", proposed.proposal.id)).toMatchObject({ ok: false });
+    expect(h.scheduler.listFor("ou_alice")).toHaveLength(1);
+  });
+
+  it("drops dismissed and expired suggestions, and refuses ones add would refuse", async () => {
+    const h = await harness();
+    const input = { ...parsed("daily 10:00 x"), ownerId: "ou_alice", chatId: "oc_alice" };
+    const a = h.scheduler.propose(input);
+    const b = h.scheduler.propose(input);
+    if (!a.ok || !b.ok) throw new Error("propose failed");
+    expect(h.scheduler.dismiss("ou_bob", a.proposal.id)).toBe(false);
+    expect(h.scheduler.dismiss("ou_alice", a.proposal.id)).toBe(true);
+    expect(h.scheduler.confirm("ou_alice", a.proposal.id)).toMatchObject({ ok: false });
+
+    h.setNow(START + PROPOSAL_TTL_MS + 60_000);
+    expect(h.scheduler.confirm("ou_alice", b.proposal.id)).toMatchObject({ ok: false });
+
+    expect(h.scheduler.propose({ ...parsed("cron */5 * * * * x"), ownerId: "ou_alice", chatId: "oc" })).toMatchObject({ ok: false });
   });
 });

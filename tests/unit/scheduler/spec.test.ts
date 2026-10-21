@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  findScheduleSuggestions,
   nextRunAt,
   parseScheduleArgs,
   shortestInterval,
@@ -121,5 +122,33 @@ describe('shortestInterval', () => {
     expect(shortestInterval(parsed('daily 08:30 x').when, KL, WED_0900_KL)).toBe(86_400_000);
     expect(shortestInterval({ kind: 'cron', expr: '*/5 9 * * *' }, KL, WED_0900_KL)).toBe(5 * 60_000);
     expect(shortestInterval(parsed('once 2026-12-24 09:00 x').when, KL, WED_0900_KL)).toBe(Infinity);
+  });
+});
+
+describe('findScheduleSuggestions', () => {
+  it('finds /schedule add lines in code blocks, inline code and lists', () => {
+    const reply = [
+      'Sure — tap the card below, or send:',
+      '```',
+      '/schedule add weekdays 08:30 Triage my unread inbox, draft replies',
+      '```',
+      '- `/schedule add daily 17:00 Remind me to log my work`',
+      '> /schedule add once 2026-12-24 09:00 Wrap presents',
+      'You can also type /schedule add mid-sentence, which is ignored.',
+    ].join('\n');
+    expect(findScheduleSuggestions(reply)).toEqual([
+      'weekdays 08:30 Triage my unread inbox, draft replies',
+      'daily 17:00 Remind me to log my work',
+      'once 2026-12-24 09:00 Wrap presents',
+    ]);
+  });
+
+  it('dedupes and stops at three', () => {
+    const lines = ['a', 'a', 'b', 'c', 'd'].map((x) => `/schedule add daily 09:00 ${x}`).join('\n');
+    expect(findScheduleSuggestions(lines)).toEqual([
+      'daily 09:00 a',
+      'daily 09:00 b',
+      'daily 09:00 c',
+    ]);
   });
 });

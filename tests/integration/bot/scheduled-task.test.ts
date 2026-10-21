@@ -26,17 +26,32 @@ import { startChannel } from '../../../src/bot/channel.js';
 
 interface SentMessage {
   chatId: string;
-  content: { markdown?: string; text?: string };
+  content: { markdown?: string; text?: string; card?: unknown };
   options?: { replyTo?: string };
 }
 
+interface CardClick {
+  chatId: string;
+  messageId: string;
+  operator: { openId: string; name?: string };
+  action: { value: Record<string, unknown> };
+}
+
 interface FakeLarkChannel {
-  handlers: { message?: (msg: NormalizedMessage) => Promise<void> | void };
+  handlers: {
+    message?: (msg: NormalizedMessage) => Promise<void> | void;
+    cardAction?: (evt: CardClick) => Promise<void> | void;
+  };
   sent: SentMessage[];
+  updated: Array<{ messageId: string; card: unknown }>;
   [key: string]: unknown;
 }
 
 const cleanups: Array<() => Promise<void>> = [];
+
+// Each test starts a whole bridge; under a full parallel run that can take a
+// few seconds before the first scheduler tick.
+vi.setConfig({ testTimeout: 20_000 });
 
 afterEach(async () => {
   sdkMock.channel = undefined;
@@ -80,9 +95,61 @@ describe('scheduled tasks through the bridge', () => {
     await startTestBridge(h);
 
     await waitFor(() => h.channel.sent.length === 1);
-    expect(h.channel.sent[0]?.content.markdown).toContain('I was offline');
-    expect(h.channel.sent[0]?.content.markdown).toContain('/schedule run s1ab');
+    const card = JSON.stringify(h.channel.sent[0]?.content.card);
+    expect(card).toContain('I was offline');
+    expect(card).toContain('"cmd":"schedule.run","arg":"s1ab"');
     expect(h.agent.runOptions).toHaveLength(0);
+  });
+
+  it("turns a /schedule add line in the agent's reply into a card only the requester can confirm", async () => {
+    const h = await createHarness({
+      agentEvents: [
+        { type: 'text', delta: 'Tap the card to confirm, or send:\n```\n/schedule add weekdays 08:30 Triage my inbox\n```' },
+        { type: 'done', terminationReason: 'normal' },
+      ],
+    });
+    await startTestBridge(h);
+
+    await h.channel.handlers.message?.(dm('Every weekday at 8:30, triage my inbox'));
+    const cardMessage = await waitForSent(h, (m) => JSON.stringify(m.content.card ?? '').includes('Create schedule'));
+    const value = findButtonValue(cardMessage.content.card, 'Create schedule');
+    expect(value).toMatchObject({ cmd: 'schedule.confirm' });
+    expect(await readSchedules(h.tmp)).toEqual([]);
+
+    // Someone else tapping it creates nothing.
+    await h.channel.handlers.cardAction?.(click('ou_other', 'om_sent_card', value!));
+    expect(await readSchedules(h.tmp)).toEqual([]);
+
+    await h.channel.handlers.cardAction?.(click('ou_user', 'om_sent_card', value!));
+    await waitFor(async () => (await readSchedules(h.tmp)).length === 1);
+    const [saved] = await readSchedules(h.tmp);
+    expect(saved).toMatchObject({ ownerId: 'ou_user', chatId: 'oc_dm', prompt: 'Triage my inbox', label: 'weekdays 08:30' });
+    expect(JSON.stringify(h.channel.updated.at(-1)?.card)).toContain('Scheduled');
+
+    // A second tap doesn't add a duplicate.
+    await h.channel.handlers.cardAction?.(click('ou_user', 'om_sent_card', value!));
+    expect(await readSchedules(h.tmp)).toHaveLength(1);
+  });
+
+  it('lists tasks as a card whose buttons pause and remove them in place', async () => {
+    const h = await createHarness();
+    await writeSchedules(h.tmp, [schedule({ nextRunAt: Date.now() + 86_400_000 })]);
+    await startTestBridge(h);
+
+    await h.channel.handlers.message?.(dm('/schedule list'));
+    const list = await waitForSent(h, (m) => JSON.stringify(m.content.card ?? '').includes('Your scheduled tasks'));
+    const pause = findButtonValue(list.content.card, '⏸ Pause');
+    expect(pause).toEqual({ cmd: 'schedule.pause', arg: 's1ab' });
+
+    await h.channel.handlers.cardAction?.(click('ou_user', 'om_list', pause!));
+    await waitFor(async () => (await readSchedules(h.tmp))[0]?.enabled === false);
+    expect(h.channel.updated.at(-1)?.messageId).toBe('om_list');
+    const resume = findButtonValue(h.channel.updated.at(-1)?.card, '▶ Resume');
+    expect(resume).toEqual({ cmd: 'schedule.resume', arg: 's1ab' });
+
+    const remove = findButtonValue(h.channel.updated.at(-1)?.card, 'Remove');
+    await h.channel.handlers.cardAction?.(click('ou_user', 'om_list', remove!));
+    await waitFor(async () => (await readSchedules(h.tmp)).length === 0);
   });
 
   it('adds a task with /schedule add and runs it on /schedule run', async () => {
@@ -121,7 +188,12 @@ describe('scheduled tasks through the bridge', () => {
   });
 });
 
-async function createHarness(opts: { chatMode?: 'p2p' | 'group' } = {}) {
+async function createHarness(
+  opts: {
+    chatMode?: 'p2p' | 'group';
+    agentEvents?: NonNullable<ConstructorParameters<typeof FakeAgentAdapter>[0]>['events'];
+  } = {},
+) {
   const tmp = await createTmpProfile('scheduled-task-');
   const workspace = await realpath(tmp.workspace);
   const base = createDefaultProfileConfig({
@@ -132,7 +204,9 @@ async function createHarness(opts: { chatMode?: 'p2p' | 'group' } = {}) {
   const profileConfig = { ...base, workspaces: { ...base.workspaces, default: workspace } };
   const sessions = new SessionStore(join(tmp.profile, 'sessions.json'));
   const workspaces = new WorkspaceStore(join(tmp.profile, 'workspaces.json'));
-  const agent = new FakeAgentAdapter({ events: [{ type: 'done', terminationReason: 'normal' }] });
+  const agent = new FakeAgentAdapter({
+    events: opts.agentEvents ?? [{ type: 'done', terminationReason: 'normal' }],
+  });
   const channel = createFakeLarkChannel(opts.chatMode ?? 'p2p');
   sdkMock.channel = channel;
   const controls = {
@@ -173,9 +247,11 @@ async function startTestBridge(h: Awaited<ReturnType<typeof createHarness>>): Pr
 function createFakeLarkChannel(chatMode: 'p2p' | 'group'): FakeLarkChannel {
   const handlers: FakeLarkChannel['handlers'] = {};
   const sent: SentMessage[] = [];
+  const updated: FakeLarkChannel['updated'] = [];
   return {
     handlers,
     sent,
+    updated,
     botIdentity: { openId: 'ou_bot', name: 'Bridge' },
     rawClient: {
       request: vi.fn(async () => ({ data: { items: [] } })),
@@ -210,6 +286,9 @@ function createFakeLarkChannel(chatMode: 'p2p' | 'group'): FakeLarkChannel {
     async send(chatId: string, content: SentMessage['content'], options?: SentMessage['options']) {
       sent.push({ chatId, content, ...(options ? { options } : {}) });
       return { messageId: `om_sent_${sent.length}` };
+    },
+    async updateCard(messageId: string, card: unknown) {
+      updated.push({ messageId, card });
     },
     async stream(_chatId: string, input: unknown) {
       const producer = (input as { markdown?: unknown }).markdown;
@@ -264,7 +343,33 @@ function dm(content: string, messageId = 'om_cmd'): NormalizedMessage {
   };
 }
 
-async function waitFor(check: () => boolean | Promise<boolean>, timeoutMs = 5000): Promise<void> {
+function click(openId: string, messageId: string, value: Record<string, unknown>): CardClick {
+  return { chatId: 'oc_dm', messageId, operator: { openId, name: openId }, action: { value } };
+}
+
+/** The `value` of the button labelled `text` anywhere in a card. */
+function findButtonValue(card: unknown, text: string): Record<string, unknown> | undefined {
+  if (!card || typeof card !== 'object') return undefined;
+  const node = card as { tag?: string; text?: { content?: string }; value?: Record<string, unknown> };
+  if (node.tag === 'button' && node.text?.content === text) return node.value;
+  for (const child of Object.values(card)) {
+    const found = Array.isArray(child)
+      ? child.map((c) => findButtonValue(c, text)).find(Boolean)
+      : findButtonValue(child, text);
+    if (found) return found;
+  }
+  return undefined;
+}
+
+async function waitForSent(
+  h: Awaited<ReturnType<typeof createHarness>>,
+  match: (m: SentMessage) => boolean,
+): Promise<SentMessage> {
+  await waitFor(() => h.channel.sent.some(match));
+  return h.channel.sent.find(match)!;
+}
+
+async function waitFor(check: () => boolean | Promise<boolean>, timeoutMs = 15_000): Promise<void> {
   const start = Date.now();
   while (!(await check())) {
     if (Date.now() - start > timeoutMs) throw new Error('timed out waiting for condition');

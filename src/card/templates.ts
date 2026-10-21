@@ -223,6 +223,83 @@ export function helpCard(agentName = 'Agent', opts: { personalLogin?: boolean } 
   ]);
 }
 
+// ─── Scheduled tasks ─────────────────────────────────────────────────────────
+// Buttons carry {cmd:'schedule.<sub>', arg:<id>}; the dispatcher runs them as
+// `/schedule <sub> <id>` with the clicker as sender, and the scheduler only
+// acts on the clicker's own tasks and suggestions.
+
+export interface ScheduleCardEntry {
+  id: string;
+  label: string;
+  timeZone: string;
+  prompt: string;
+  enabled: boolean;
+  /** "Mon 27 Oct, 08:30", already formatted. */
+  nextRun?: string;
+  lastRun?: string;
+}
+
+/** The agent suggested a schedule; one tap creates it. */
+export function scheduleSuggestionCard(s: {
+  proposalId: string;
+  label: string;
+  timeZone: string;
+  prompt: string;
+  nextRun: string;
+}): object {
+  return shell('📅 Create this scheduled task?', [
+    divMd(`**${escapeMd(s.label)}** (${s.timeZone})\n> ${escapeMd(s.prompt)}\nFirst run: ${s.nextRun}`),
+    actions([
+      { text: 'Create schedule', value: { cmd: 'schedule.confirm', arg: s.proposalId }, style: 'primary' },
+      { text: 'Not now', value: { cmd: 'schedule.dismiss', arg: s.proposalId } },
+    ]),
+    divMd('Only you can create it. Manage tasks any time with `/schedule list`.'),
+  ]);
+}
+
+/** A card with its buttons answered: shows the outcome, no more buttons. */
+export function scheduleResultCard(title: string, markdown: string): object {
+  return shell(title, [divMd(markdown)]);
+}
+
+/** The missed-run notice, with a button to run it now. */
+export function scheduleMissedCard(s: { id: string; label: string; dueAt: string }): object {
+  return shell('⏰ Scheduled task skipped', [
+    divMd(`I was offline at ${s.dueAt}, so I skipped \`${s.id}\` (${escapeMd(s.label)}).`),
+    actions([{ text: 'Run it now', value: { cmd: 'schedule.run', arg: s.id }, style: 'primary' }]),
+  ]);
+}
+
+/** `/schedule list`: each task with Run now / Pause or Resume / Remove. */
+export function scheduleListCard(entries: ScheduleCardEntry[], timeZone: string): object {
+  if (entries.length === 0) {
+    return shell('📅 Your scheduled tasks', [
+      divMd(
+        'You have no scheduled tasks.\nAdd one with `/schedule add weekdays 08:30 <task>`, ' +
+          'or just ask me ("every weekday at 8:30, summarize my inbox").',
+      ),
+    ]);
+  }
+  const elements: object[] = [];
+  entries.forEach((e, i) => {
+    if (i > 0) elements.push(HR);
+    const state = e.enabled ? (e.nextRun ? `Next: ${e.nextRun}` : 'No upcoming run') : '⏸ Paused';
+    const last = e.lastRun ? ` · Last: ${e.lastRun}` : '';
+    elements.push(divMd(`\`${e.id}\` · **${escapeMd(e.label)}**\n${escapeMd(e.prompt)}\n${state}${last}`));
+    elements.push(
+      actions([
+        { text: '▶ Run now', value: { cmd: 'schedule.run', arg: e.id } },
+        e.enabled
+          ? { text: '⏸ Pause', value: { cmd: 'schedule.pause', arg: e.id } }
+          : { text: '▶ Resume', value: { cmd: 'schedule.resume', arg: e.id }, style: 'primary' },
+        { text: 'Remove', value: { cmd: 'schedule.remove', arg: e.id }, style: 'danger' },
+      ]),
+    );
+  });
+  elements.push(HR, divMd(`Times are ${timeZone}. Add more with \`/schedule add <when> <task>\`.`));
+  return shell('📅 Your scheduled tasks', elements);
+}
+
 function escapeMd(s: string): string {
   return s.replace(/([*_`\\])/g, '\\$1');
 }

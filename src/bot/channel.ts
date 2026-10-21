@@ -59,7 +59,13 @@ import type { ScopeContext } from '../policy/run-policy';
 import { createOwnerRefreshController } from '../policy/owner';
 import { RunExecutor } from '../runtime/run-executor';
 import { Scheduler, type FireResult } from '../scheduler/scheduler';
-import { formatRunTime, isValidTimeZone } from '../scheduler/spec';
+import {
+  findScheduleSuggestions,
+  formatRunTime,
+  isValidTimeZone,
+  parseScheduleArgs,
+} from '../scheduler/spec';
+import { scheduleMissedCard, scheduleSuggestionCard } from '../card/templates';
 import { ScheduleStore, type Schedule } from '../scheduler/store';
 import type { SessionCatalog } from '../session/catalog';
 import type { SessionStore } from '../session/store';
@@ -636,9 +642,11 @@ async function startScheduler(
     fire: (schedule) => fireScheduledTask(channel, pending, controls, schedule),
     notifyMissed: async (schedule, dueAt) => {
       await channel.send(schedule.chatId, {
-        markdown:
-          `⏰ I was offline at ${formatRunTime(dueAt, schedule.timeZone)}, so I skipped your scheduled task ` +
-          `\`${schedule.id}\` (${schedule.label}). Send \`/schedule run ${schedule.id}\` to run it now.`,
+        card: scheduleMissedCard({
+          id: schedule.id,
+          label: schedule.label,
+          dueAt: formatRunTime(dueAt, schedule.timeZone),
+        }),
       });
     },
   });
@@ -693,6 +701,58 @@ async function fireScheduledTask(
   };
   pending.push(schedule.chatId, msg);
   return 'ran';
+}
+
+/** The reply's text, once the run has finished normally; '' otherwise. */
+async function collectReplyText(events: AsyncIterable<AgentEvent>): Promise<string> {
+  let text = '';
+  for await (const evt of events) {
+    if (evt.type === 'text') text += evt.delta;
+    else if (evt.type === 'final_text') text += `\n${evt.content}`;
+    else if (evt.type === 'done') return evt.terminationReason === 'normal' ? text : '';
+    else if (evt.type === 'error') return '';
+  }
+  return text;
+}
+
+/**
+ * Post a "Create schedule" card for each suggestion in the reply. The card is
+ * bound to the person who asked: only they can confirm it, and nothing is
+ * created until they tap, so a suggestion an email or document slipped into
+ * the reply still needs that person's tap.
+ */
+async function offerScheduleSuggestions(
+  channel: LarkChannel,
+  scheduler: Scheduler,
+  input: { chatId: string; ownerId: string; ownerName?: string; text: Promise<string> },
+): Promise<void> {
+  const suggestions = findScheduleSuggestions(await input.text);
+  for (const args of suggestions) {
+    const parsed = parseScheduleArgs(args);
+    if ('error' in parsed) {
+      log.info('scheduler', 'suggestion-unparsed', { args: args.slice(0, 80) });
+      continue;
+    }
+    const result = scheduler.propose({
+      ...parsed,
+      ownerId: input.ownerId,
+      ...(input.ownerName ? { ownerName: input.ownerName } : {}),
+      chatId: input.chatId,
+    });
+    if (!result.ok) {
+      log.info('scheduler', 'suggestion-refused', { reason: result.error });
+      continue;
+    }
+    await channel.send(input.chatId, {
+      card: scheduleSuggestionCard({
+        proposalId: result.proposal.id,
+        label: parsed.label,
+        timeZone: scheduler.timeZone,
+        prompt: parsed.prompt,
+        nextRun: formatRunTime(result.nextRunAt, scheduler.timeZone),
+      }),
+    });
+  }
 }
 
 export function scheduledTaskPrompt(schedule: Schedule): string {
@@ -1198,6 +1258,10 @@ async function runAgentBatch(deps: RunBatchDeps): Promise<void> {
   activePolicyFingerprints.set(scope, flow.policy.policyFingerprint);
   const handle = execution.handle;
   const eventStream = execution.subscribe();
+  // `/schedule add …` lines in a DM reply become one-tap "Create schedule"
+  // cards for the person who asked (offered once the reply is out, below).
+  const replyText =
+    controls.scheduler && firstMsg.chatType === 'p2p' ? collectReplyText(execution.subscribe()) : undefined;
   if (flow.resumeFrom) {
     log.info('session', 'resume', { sessionId: flow.resumeFrom, cwd });
   } else {
@@ -1490,6 +1554,14 @@ async function runAgentBatch(deps: RunBatchDeps): Promise<void> {
   } finally {
     activePolicyFingerprints.delete(scope);
     scheduleWorkingReactionCleanup(channel, lastMsg.messageId, reactionPromise);
+    if (replyText && controls.scheduler) {
+      void offerScheduleSuggestions(channel, controls.scheduler, {
+        chatId,
+        ownerId: firstMsg.senderId,
+        ...(firstMsg.senderName ? { ownerName: firstMsg.senderName } : {}),
+        text: replyText,
+      }).catch((err) => log.warn('scheduler', 'suggestion-failed', { err: String(err) }));
+    }
   }
 }
 
