@@ -16,6 +16,7 @@ import {
   type AgentRun,
   type AgentRunOptions,
 } from '../types';
+import { buildIdentitySettings, type ClaudeRunSettings } from './identity-settings';
 import { translateEvent } from './stream-json';
 
 export interface ClaudeAdapterOptions {
@@ -68,7 +69,11 @@ export class ClaudeAdapter implements AgentAdapter {
     // stream-json response. Pass the prompt via stdin and the appended system
     // prompt via a temp file (the same approach the Codex adapter uses) so no
     // special characters ever reach the shell.
-    const systemPromptFile = writeSystemPromptFile(buildBridgeSystemPrompt(this.botIdentity));
+    const larkIdentity = opts.larkIdentity;
+    const systemPromptFile = writeRunFiles(
+      buildBridgeSystemPrompt(this.botIdentity, larkIdentity),
+      larkIdentity ? buildIdentitySettings(larkIdentity) : undefined,
+    );
 
     const args = [
       '-p',
@@ -80,12 +85,17 @@ export class ClaudeAdapter implements AgentAdapter {
       '--append-system-prompt-file',
       systemPromptFile.path,
     ];
+    if (systemPromptFile.settingsPath) args.push('--settings', systemPromptFile.settingsPath);
     if (opts.sessionId) args.push('--resume', opts.sessionId);
     if (opts.model) args.push('--model', opts.model);
 
+    // A per-person run points lark-cli at that person's own login folder.
+    const larkChannel = larkIdentity?.larkCliConfigDir
+      ? { ...this.larkChannel, larkCliConfigDir: larkIdentity.larkCliConfigDir }
+      : this.larkChannel;
     const child = spawnProcess(this.binary, args, {
       cwd: opts.cwd,
-      env: mergeProcessEnv(process.env, buildLarkChannelEnv(this.larkChannel)),
+      env: mergeProcessEnv(process.env, buildLarkChannelEnv(larkChannel)),
       stdio: ['pipe', 'pipe', 'pipe'],
     }) as ClaudeChild;
 
@@ -275,12 +285,21 @@ async function* createEventStream(
  * passed via `--append-system-prompt-file` instead of argv. Returns the path
  * plus an idempotent, best-effort cleanup that removes the temp directory.
  */
-function writeSystemPromptFile(content: string): { path: string; cleanup: () => void } {
+function writeRunFiles(
+  content: string,
+  settings: ClaudeRunSettings | undefined,
+): { path: string; settingsPath?: string; cleanup: () => void } {
   const dir = mkdtempSync(join(tmpdir(), 'lark-claude-'));
   const path = join(dir, 'append-system-prompt.md');
   writeFileSync(path, content, 'utf8');
+  let settingsPath: string | undefined;
+  if (settings) {
+    settingsPath = join(dir, 'settings.json');
+    writeFileSync(settingsPath, `${JSON.stringify(settings, null, 2)}\n`, 'utf8');
+  }
   return {
     path,
+    ...(settingsPath ? { settingsPath } : {}),
     cleanup: () => {
       try {
         rmSync(dir, { recursive: true, force: true });

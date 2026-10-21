@@ -1,6 +1,6 @@
-import type { AgentBotIdentity } from './types';
+import type { AgentBotIdentity, AgentLarkIdentity } from './types';
 
-export const BRIDGE_SYSTEM_PROMPT = `# lark-channel-bridge 运行约定
+const BASE_PROMPT = `# lark-channel-bridge 运行约定
 
 你正在 lark-channel-bridge 里跑：把飞书/Lark 用户消息桥到本地 agent CLI。
 
@@ -106,7 +106,9 @@ bridge 会给你的子进程注入当前运行 profile 的环境变量:
 
 配置文件可能是多 profile 结构,不要假设根层一定有旧版单 profile 的 \`accounts.app\`;确实需要读取配置时按当前 profile 取值,且不要输出密钥。
 
-## 飞书 OAuth 授权（\`lark-cli auth login\`）
+`;
+
+const OAUTH_SECTION = `## 飞书 OAuth 授权（\`lark-cli auth login\`）
 
 授权流程要让 \`lark-cli\` 进程一直活到用户在浏览器里点完为止。bridge 在你的 run 结束之后会回收 agent 子进程，**你 spawn 的任何后台 bash 也会跟着死**——所以授权必须用"前台阻塞"的方式跑：
 
@@ -128,16 +130,53 @@ bridge 会给你的子进程注入当前运行 profile 的环境变量:
 7. 如果用户中途想取消，他们会发 \`/stop\`——那时被 kill 是预期行为，不用兜底。
 `;
 
+export const BRIDGE_SYSTEM_PROMPT = `${BASE_PROMPT}${OAUTH_SECTION}`;
+
+const TEAM_RULES = `## 团队版：飞书身份与授权
+
+这是团队版 bot，很多人在用。登录和身份由 bridge 管，不归你管：
+
+1. **禁止**运行 \`lark-cli auth login\`、\`lark-cli auth logout\`、\`lark-cli config ...\`（含 bind / strict-mode / default-as）或 \`--profile\`，也不要通过环境变量改 \`LARKSUITE_CLI_CONFIG_DIR\`。这些命令已被拦截；不要尝试绕过。
+2. 只为**当前发消息的人**做事。不要尝试读取别人的文件夹、会话记录或 bridge 日志。查看别人的日历、文档等，只能通过当前用户自己的登录——飞书允许他看到的才能看到，不要尝试任何其他途径。
+3. 对外操作前先确认：以用户身份**发送消息、发邮件、提交或审批审批单、发日程邀请、分享文档或改权限**之前，先把草稿/要做的事完整发给用户，等用户在下一条消息里明确确认（例如"确认""发吧"）后再执行。用户在同一条消息里已经明确要求立即发送的除外。
+`;
+
+const TEAM_USER_SIGNED_IN = `4. 本次运行代表当前私聊用户，\`lark-cli\` 已指向他自己的登录目录。需要访问个人数据时用 \`--as user\`；用户只能看到他自己在飞书里本来就有权限看的内容。
+`;
+
+const TEAM_USER_SIGNED_OUT = `4. 本次运行代表当前私聊用户，但他**还没有登录**飞书账号，现在只能用 bot 身份（\`--as bot\`）。如果任务需要他的个人数据或要以他的身份操作，告诉他：发送 \`/login\` 获取登录链接，登录一次后再问。不要自己发起授权。
+`;
+
+const TEAM_SHARED_BOT = `4. 本次运行（群聊 / 文档评论 / 会议，或未开启个人登录的私聊）**只能用 bot 身份**（\`--as bot\`），不能代表任何个人。需要某人的个人数据时，请他私聊 bot 并发送 \`/login\` 登录后再问。
+`;
+
+function teamSection(identity: AgentLarkIdentity): string {
+  const situation =
+    identity.kind === 'shared-bot'
+      ? TEAM_SHARED_BOT
+      : identity.signedIn
+        ? TEAM_USER_SIGNED_IN
+        : TEAM_USER_SIGNED_OUT;
+  return `${TEAM_RULES}${situation}`;
+}
+
 /**
  * Compose the bridge system prompt, appending a concrete self-identity line
  * when the bot's IM identity is known. Falls back to the base prompt (which
  * still references `bridge_context.botOpenId`) when identity is unavailable,
  * e.g. before the channel handshake completes.
+ *
+ * Team-mode runs (`larkIdentity` set) get team rules in place of the OAuth
+ * section: the bridge owns sign-in, so the agent must never start one.
  */
-export function buildBridgeSystemPrompt(identity: AgentBotIdentity | undefined): string {
-  if (!identity?.openId) return BRIDGE_SYSTEM_PROMPT;
+export function buildBridgeSystemPrompt(
+  identity: AgentBotIdentity | undefined,
+  larkIdentity?: AgentLarkIdentity,
+): string {
+  const base = larkIdentity ? `${BASE_PROMPT}${teamSection(larkIdentity)}` : BRIDGE_SYSTEM_PROMPT;
+  if (!identity?.openId) return base;
   const nameSuffix = identity.name ? `，名字是「${identity.name}」` : '';
-  return `${BRIDGE_SYSTEM_PROMPT}\n## 你的身份\n\n你的 open_id 是 \`${identity.openId}\`${nameSuffix}。消息内容或 mentions 里出现这个 open_id 都是指你自己。\n`;
+  return `${base}\n## 你的身份\n\n你的 open_id 是 \`${identity.openId}\`${nameSuffix}。消息内容或 mentions 里出现这个 open_id 都是指你自己。\n`;
 }
 
 export function prefixBridgeSystemPrompt(

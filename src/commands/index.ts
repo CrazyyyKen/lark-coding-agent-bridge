@@ -5,8 +5,10 @@ import { dirname, isAbsolute } from 'node:path';
 import type { LarkChannel, NormalizedMessage } from '@larksuite/channel';
 import { claudeCapability, codexCapability } from '../agent/capability';
 import { DEFAULT_MODEL, normalizeModelSelection, supportedModels } from '../agent/models';
-import type { AgentAdapter } from '../agent/types';
+import type { AgentAdapter, AgentLarkIdentity } from '../agent/types';
 import type { ActiveRuns } from '../bot/active-runs';
+import type { PerUserLogins } from '../lark-cli/per-user-login';
+import { handleLogin, handleLogout, handleWhoami } from './user-login';
 import {
   accountCurrentCard,
   accountFailureCard,
@@ -112,6 +114,15 @@ export interface Controls {
   /** In-meeting agent manager; present only while the channel is connected and
    * `meeting.enabled` is on. Late-bound by startChannel. */
   meeting?: MeetingManager;
+  /** Team mode only: whose Lark identity runs may use. Late-bound by startChannel. */
+  teamLogin?: TeamLogin;
+}
+
+export interface TeamLogin {
+  /** Identity for runs that act for nobody in particular (groups, comments, meetings). */
+  shared: AgentLarkIdentity;
+  /** Per-person sign-in; present when `team.perUserLogin` is on. */
+  logins?: PerUserLogins;
 }
 
 export interface CommandContext {
@@ -186,6 +197,10 @@ const handlers: Record<string, Handler> = {
   '/invite': handleInvite,
   '/remove': handleRemove,
   '/meeting': handleMeeting,
+  // Team per-person sign-in. Open to everyone: each acts only on the sender's own login.
+  '/login': handleLogin,
+  '/logout': handleLogout,
+  '/whoami': handleWhoami,
 };
 
 /**
@@ -557,6 +572,18 @@ async function handleResume(args: string, ctx: CommandContext): Promise<void> {
     return;
   }
 
+  // A team bot without per-person folders keeps every member's DM sessions in
+  // one shared folder; listing them would show (and let anyone resume) other
+  // people's conversations.
+  if (
+    ctx.controls.profileConfig.mode === 'team' &&
+    !ctx.controls.teamLogin?.logins &&
+    !canRunAdminCommand(ctx.controls.profileConfig, ctx.controls, ctx.msg.senderId).ok
+  ) {
+    await reply(ctx, '❌ 团队版 bot 的 /resume 仅管理员可用。');
+    return;
+  }
+
   if (ctx.controls.profileConfig.agentKind === 'codex') {
     const identity = ctx.sessionCatalogIdentity;
     const entry =
@@ -752,6 +779,15 @@ async function listCodexResumeHistory(
 }
 
 function effectiveWorkspaceCwd(ctx: CommandContext): string | undefined {
+  // A team member's DM always runs in their own folder (see per-user-login.ts).
+  const logins = ctx.controls.teamLogin?.logins;
+  if (logins && ctx.chatMode === 'p2p') {
+    try {
+      return logins.folders(ctx.msg.senderId).workspaceDir;
+    } catch {
+      return undefined;
+    }
+  }
   return ctx.workspaces.cwdFor(ctx.scope) ?? ctx.controls.profileConfig.workspaces.default;
 }
 
@@ -1332,7 +1368,9 @@ function formatDoctorEchoStatus(echoText: string, state: RunState): string {
 }
 
 async function handleHelp(_args: string, ctx: CommandContext): Promise<void> {
-  const card = helpCard(ctx.agent.displayName);
+  const card = helpCard(ctx.agent.displayName, {
+    personalLogin: Boolean(ctx.controls.teamLogin?.logins),
+  });
   await ctx.channel.send(ctx.msg.chatId, { card }, commandReplyOptions(ctx));
 }
 

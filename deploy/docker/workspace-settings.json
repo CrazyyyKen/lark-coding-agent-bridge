@@ -11,6 +11,8 @@
       "Read(~/.lark-channel/**/secrets.enc)",
       "Read(~/.lark-channel/**/.keystore.salt)",
       "Read(~/.lark-channel/**/lark-cli/**)",
+      "Read(~/.local/share/lark-cli/**)",
+      "Edit(~/.local/share/lark-cli/**)",
       "Read(~/.claude.json)",
       "Read(~/.claude/.credentials.json)",
       "Edit(~/.lark-channel/**)",

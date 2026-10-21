@@ -318,6 +318,8 @@ async function runMeetingAgent(
     workspaces: deps.workspaces,
     executor: deps.executor,
     now: Date.now(),
+    // Team mode: a meeting has many participants — bot identity only.
+    ...(controls.teamLogin ? { larkIdentity: controls.teamLogin.shared } : {}),
     observability: {
       profile: controls.profile,
       agent: capability.agentId,

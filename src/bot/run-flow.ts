@@ -1,6 +1,6 @@
 import type { AgentCapability } from '../agent/capability';
 import { resolveModelArg } from '../agent/models';
-import type { AgentEvent } from '../agent/types';
+import type { AgentEvent, AgentLarkIdentity } from '../agent/types';
 import type { ProfileConfig } from '../config/profile-schema';
 import type { AccessDecision } from '../policy/access';
 import {
@@ -35,6 +35,13 @@ export interface StartRunFlowInput {
   executor: RunExecutor;
   now: number;
   stopGraceMs?: number;
+  /** Team-mode Lark identity for this run. See {@link AgentLarkIdentity}. */
+  larkIdentity?: AgentLarkIdentity;
+  /**
+   * Working directory chosen by the bridge, overriding the scope's `/cd`
+   * choice and the profile default. Used for a person's own folder.
+   */
+  cwdOverride?: string;
   observability?: {
     profile: string;
     agent: string;
@@ -76,7 +83,10 @@ export interface RecordRunSessionEventInput {
 
 export async function startRunFlow(input: StartRunFlowInput): Promise<StartRunFlowResult> {
   const requestedCwd =
-    input.workspaces.cwdFor(input.scopeId) ?? input.profileConfig.workspaces.default ?? '';
+    input.cwdOverride ??
+    input.workspaces.cwdFor(input.scopeId) ??
+    input.profileConfig.workspaces.default ??
+    '';
   const workspace = await resolveWorkingDirectory(requestedCwd);
   if (!workspace.ok) {
     return {
@@ -156,6 +166,7 @@ export async function startRunFlow(input: StartRunFlowInput): Promise<StartRunFl
               .filter((path): path is string => Boolean(path))
           : undefined,
       stopGraceMs: input.stopGraceMs,
+      ...(input.larkIdentity ? { larkIdentity: input.larkIdentity } : {}),
       observability: input.observability,
     });
   } catch (err) {

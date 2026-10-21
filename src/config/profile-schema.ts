@@ -142,11 +142,36 @@ export interface LarkCliConfig {
   };
 }
 
+/**
+ * Team-mode settings. Ignored in personal mode.
+ *
+ * `perUserLogin` lets each person who DMs the bot sign in once with their own
+ * Lark account. Their DM runs then act as them through a lark-cli login folder
+ * of their own, with their own working folder and session history, and the
+ * agent is blocked from everyone else's. Group chats, doc comments and
+ * meetings stay bot-only. Off by default: a team bot then only ever uses the
+ * bot's own identity. Needs the Claude agent (the per-run block list is a
+ * Claude Code settings file).
+ */
+export interface TeamConfig {
+  perUserLogin: boolean;
+  /**
+   * What the sign-in link asks for, as lark-cli `--domain` values. `['all']`
+   * (the default) asks for every user permission enabled on the app, so people
+   * authorize once instead of once per kind of task.
+   */
+  loginDomains: string[];
+  /** Scopes to leave out of the sign-in request (lark-cli `--exclude`). */
+  loginExclude: string[];
+}
+
 export interface ProfileConfig {
   schemaVersion: 2;
   agentKind: AgentKind;
   /** Deployment mode switch. Default 'personal'. See {@link ProfileMode}. */
   mode: ProfileMode;
+  /** Team-mode settings. See {@link TeamConfig}. */
+  team: TeamConfig;
   accounts: {
     app: AppCredentials;
   };
@@ -179,6 +204,13 @@ export function effectiveLarkCliIdentity(
   profile: Pick<ProfileConfig, 'mode' | 'larkCli'>,
 ): LarkCliIdentityPreset {
   return profile.mode === 'team' ? 'bot-only' : profile.larkCli.identityPreset;
+}
+
+/** True when DM runs should act as the sender through their own Lark login. */
+export function perUserLoginEnabled(
+  profile: Pick<ProfileConfig, 'mode' | 'team' | 'agentKind'>,
+): boolean {
+  return profile.mode === 'team' && profile.team?.perUserLogin === true && profile.agentKind === 'claude';
 }
 
 export interface RootConfig {
@@ -243,6 +275,7 @@ export function normalizeProfileConfig(input: unknown): ProfileConfig {
     comments?: unknown;
     meeting?: unknown;
     larkCli?: unknown;
+    team?: unknown;
   };
 
   if (raw.schemaVersion !== 2) {
@@ -275,6 +308,7 @@ export function normalizeProfileConfig(input: unknown): ProfileConfig {
     schemaVersion: 2,
     agentKind: raw.agentKind,
     mode: raw.mode === 'team' ? 'team' : 'personal',
+    team: normalizeTeam(raw.team),
     accounts,
     ...(raw.secrets ? { secrets: raw.secrets } : {}),
     preferences,
@@ -446,6 +480,19 @@ function clampNumber(value: unknown, min: number, max: number, fallback: number)
   const n = typeof value === 'number' ? value : Number(value);
   if (!Number.isFinite(n)) return fallback;
   return Math.min(max, Math.max(min, Math.floor(n)));
+}
+
+function normalizeTeam(input: unknown): TeamConfig {
+  const raw =
+    input && typeof input === 'object' && !Array.isArray(input)
+      ? (input as { perUserLogin?: unknown; loginDomains?: unknown; loginExclude?: unknown })
+      : {};
+  const loginDomains = stringArray(raw.loginDomains).map((d) => d.trim()).filter(Boolean);
+  return {
+    perUserLogin: raw.perUserLogin === true,
+    loginDomains: loginDomains.length > 0 ? loginDomains : ['all'],
+    loginExclude: stringArray(raw.loginExclude).map((s) => s.trim()).filter(Boolean),
+  };
 }
 
 function normalizeLarkCli(input: unknown): LarkCliConfig {

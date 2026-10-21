@@ -28,6 +28,39 @@ export type AgentEvent =
 
 export const CLAUDE_DEFAULT_PERMISSION_MODE: ClaudePermissionMode = 'bypassPermissions';
 
+/**
+ * Whose Lark identity a team-mode run may use, chosen by the bridge per run.
+ * Personal-mode runs carry none and keep the profile's own lark-cli login.
+ *
+ *   - `user`: a DM run acting for one person through their own lark-cli
+ *     login folder (team.perUserLogin).
+ *   - `shared-bot`: any other team-mode run (groups, doc comments, meetings,
+ *     or DMs when per-person sign-in is off). The bot's own identity only.
+ */
+export interface AgentLarkIdentity {
+  kind: 'user' | 'shared-bot';
+  /** The sender's open_id, for `user`. */
+  openId?: string;
+  /** Whether that person has finished signing in, for `user`. */
+  signedIn?: boolean;
+  /** Replaces the profile's LARKSUITE_CLI_CONFIG_DIR for this run. */
+  larkCliConfigDir?: string;
+  /**
+   * Directories the agent's file tools must not read or edit: other people's
+   * folders, every session history, bridge logs. Enforced as Claude Code
+   * permission deny rules, so it is a fence for the agent's tools, not an OS
+   * boundary.
+   */
+  blockedDirs: string[];
+  /**
+   * Permission rules carried over from the shared workspace's
+   * `.claude/settings.json` (e.g. `Bash(lark-cli:*)`). A person's folder is a
+   * project Claude Code has never trusted, so rules in its own project
+   * settings would be ignored; passing them with the run keeps them in force.
+   */
+  inheritedRules?: { allow: string[]; deny: string[] };
+}
+
 export interface AgentRunOptions {
   runId: string;
   prompt: string;
@@ -38,6 +71,8 @@ export interface AgentRunOptions {
   images?: readonly string[];
   sandbox?: CodexSandboxMode;
   permissionMode?: ClaudePermissionMode;
+  /** Team-mode Lark identity for this run. See {@link AgentLarkIdentity}. */
+  larkIdentity?: AgentLarkIdentity;
   /**
    * Grace period (ms) between SIGTERM and SIGKILL when stop() is called on
    * the returned run. Lets the agent (and any subprocess it spawned, e.g.

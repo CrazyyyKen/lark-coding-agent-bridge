@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { AgentAdapter, AgentEvent, AgentRun } from '../agent/types';
+import type { AgentAdapter, AgentEvent, AgentLarkIdentity, AgentRun } from '../agent/types';
 import { ActiveRuns, type RunHandle } from '../bot/active-runs';
 import { ProcessPool } from '../bot/process-pool';
 import type { RunPolicyAllow } from '../policy/run-policy';
@@ -24,6 +24,8 @@ export interface SubmitRunInput {
   images?: readonly string[];
   stopGraceMs?: number;
   nowait?: boolean;
+  /** Team-mode Lark identity, passed through to the agent run. */
+  larkIdentity?: AgentLarkIdentity;
   observability?: {
     profile: string;
     agent: string;
@@ -103,6 +105,7 @@ export class RunExecutor {
       images: input.images,
       sandbox: input.policy.sandbox,
       permissionMode: input.policy.permissionMode,
+      ...(input.larkIdentity ? { larkIdentity: input.larkIdentity } : {}),
       stopGraceMs: input.stopGraceMs,
     };
     let run: AgentRun;

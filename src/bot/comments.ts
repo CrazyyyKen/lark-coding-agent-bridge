@@ -262,6 +262,8 @@ export async function handleCommentMention(deps: CommentDeps): Promise<void> {
         sessionId,
         threadId,
         stopGraceMs: getAgentStopGraceMs(controls.cfg),
+        // Team mode: comment replies act for nobody in particular — bot only.
+        ...(controls.teamLogin ? { larkIdentity: controls.teamLogin.shared } : {}),
         observability: {
           profile: controls.profile,
           agent: capability.agentId,

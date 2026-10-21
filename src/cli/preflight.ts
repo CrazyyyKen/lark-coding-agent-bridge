@@ -127,6 +127,22 @@ async function checkLarkCli(opts: PreFlightOptions): Promise<void> {
       } else if (teamTarget.identityPreset !== 'bot-only') {
         await switchLarkCliIdentityPolicy(profileArgs, larkChannelEnv, 'bot-only');
       }
+      // The shared folder serves everyone, so it must never hold a person's
+      // token: an agent once signed a member in here and flipped the policy,
+      // and every member then acted as them. Personal sign-ins live in
+      // per-person folders (team.perUserLogin).
+      if (teamTarget.sameApp && teamTarget.hasUserAuth) {
+        const logout = await runCapture(
+          'lark-cli',
+          [...profileArgs, 'auth', 'logout'],
+          BIND_TIMEOUT_MS,
+          larkChannelEnv,
+        );
+        log[logout.success ? 'info' : 'warn']('lark-cli', 'team-shared-user-removed', {
+          profile: appPaths.profile,
+          ok: logout.success,
+        });
+      }
       return;
     }
     const target = await readPrivateTarget(appPaths, bridgeConfig);

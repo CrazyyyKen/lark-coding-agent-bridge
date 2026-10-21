@@ -106,7 +106,7 @@ export function evaluateRunPolicy(input: RunPolicyInput): RunPolicyResult {
 
   const accessMode = clampAccess(
     input.profileConfig.permissions.defaultAccess,
-    input.profileConfig.permissions.maxAccess,
+    profileMaxAccess(input.profileConfig),
     input.capability.permissions.maxAccess,
   );
   const sandbox = accessToCodexSandbox(accessMode);
@@ -148,6 +148,16 @@ export function evaluateRunPolicy(input: RunPolicyInput): RunPolicyResult {
       inheritCodexHome: input.inheritCodexHome ?? false,
     }),
   };
+}
+
+/**
+ * Team bots are capped at `workspace`: they serve many people, and `full`
+ * would hand every one of them an unrestricted shell that no per-run block
+ * list can fence (one person's run could read another's files and logins).
+ */
+function profileMaxAccess(profileConfig: ProfileConfig): AccessMode {
+  const max = profileConfig.permissions.maxAccess;
+  return profileConfig.mode === 'team' && max === 'full' ? 'workspace' : max;
 }
 
 function reject(code: RunPolicyReject['rejectReason']['code'], userVisible: string): RunPolicyReject {

@@ -4,7 +4,7 @@ import type {
   NormalizedMessage,
 } from '@larksuite/channel';
 import { createLarkChannel } from '@larksuite/channel';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve as resolvePath } from 'node:path';
 import { claudeCapability, codexCapability } from '../agent/capability';
 import { modelLabel, normalizeModelSelection, resolveModelArg } from '../agent/models';
 import {
@@ -14,7 +14,7 @@ import {
   type BridgePromptQuotedMessage,
   type BridgePromptTopicMessage,
 } from '../agent/prompt';
-import type { AgentAdapter, AgentEvent } from '../agent/types';
+import type { AgentAdapter, AgentEvent, AgentLarkIdentity } from '../agent/types';
 import { handleCardAction } from '../card/dispatcher';
 import { CallbackAuth } from '../card/callback-auth';
 import { CallbackNonceStore } from '../card/callback-store';
@@ -28,7 +28,7 @@ import {
   type RunState,
 } from '../card/run-state';
 import { renderText } from '../card/text-renderer';
-import { tryHandleCommand, type Controls } from '../commands';
+import { tryHandleCommand, type Controls, type TeamLogin } from '../commands';
 import type { AppConfig } from '../config/schema';
 import {
   getAgentStopGraceMs,
@@ -38,8 +38,14 @@ import {
   getRunIdleTimeoutMs,
   getShowToolCalls,
 } from '../config/schema';
+import { perUserLoginEnabled } from '../config/profile-schema';
 import { resolveAppSecret } from '../config/secret-resolver';
 import { log, reportMetric, withTrace } from '../core/logger';
+import {
+  PerUserLogins,
+  sharedBotIdentity,
+  type PersonRun,
+} from '../lark-cli/per-user-login';
 import { MediaCache, type LocalAttachment } from '../media/cache';
 import {
   toPolicyAttachment,
@@ -178,7 +184,50 @@ export interface StartChannelDeps {
   sessionCatalog?: SessionCatalog;
   workspaces: WorkspaceStore;
   controls: Controls;
-  appPaths?: Pick<AppPaths, 'secretsFile' | 'keystoreSaltFile' | 'mediaDir'>;
+  appPaths?: Pick<AppPaths, 'secretsFile' | 'keystoreSaltFile' | 'mediaDir'> &
+    Partial<Pick<AppPaths, 'rootDir' | 'profileDir' | 'defaultWorkspaceDir'>>;
+}
+
+/**
+ * Team mode: the identity each run may use. Runs acting for nobody in
+ * particular get the shared bot-only identity; with `team.perUserLogin`, DMs
+ * act for their sender through that person's own login (per-user-login.ts).
+ */
+function createTeamLogin(
+  controls: Controls,
+  appPaths: StartChannelDeps['appPaths'],
+): TeamLogin | undefined {
+  const profileConfig = controls.profileConfig;
+  if (profileConfig.mode !== 'team') return undefined;
+  if (!appPaths?.rootDir || !appPaths.profileDir) {
+    log.warn('per-user-login', 'team-paths-missing', { profile: controls.profile });
+    return undefined;
+  }
+  const configured = profileConfig.workspaces.default ?? appPaths.defaultWorkspaceDir;
+  const workspaceRoot = configured ? resolvePath(configured) : undefined;
+  const shared = sharedBotIdentity({
+    rootDir: appPaths.rootDir,
+    profileDir: appPaths.profileDir,
+    ...(workspaceRoot ? { workspaceRoot } : {}),
+  });
+  if (!profileConfig.team?.perUserLogin) return { shared };
+  if (!perUserLoginEnabled(profileConfig) || !workspaceRoot) {
+    log.warn('per-user-login', 'disabled', {
+      profile: controls.profile,
+      reason: workspaceRoot ? 'needs-claude-agent' : 'no-workspace',
+    });
+    return { shared };
+  }
+  return {
+    shared,
+    logins: new PerUserLogins({
+      profile: controls.profile,
+      rootDir: appPaths.rootDir,
+      profileDir: appPaths.profileDir,
+      workspaceRoot,
+      team: profileConfig.team,
+    }),
+  };
 }
 
 export async function startChannel(deps: StartChannelDeps): Promise<BridgeChannel> {
@@ -271,6 +320,18 @@ export async function startChannel(deps: StartChannelDeps): Promise<BridgeChanne
 
   const channel = createLarkChannel(opts);
   const media = new MediaCache(channel, deps.appPaths?.mediaDir);
+  controls.teamLogin = createTeamLogin(controls, deps.appPaths);
+  // A signed-in team member's DM attachments are cached in their own folder,
+  // not the shared cache other people's runs can read.
+  const personMedia = new Map<string, MediaCache>();
+  const mediaFor = (dir: string): MediaCache => {
+    let cache = personMedia.get(dir);
+    if (!cache) {
+      cache = new MediaCache(channel, dir);
+      personMedia.set(dir, cache);
+    }
+    return cache;
+  };
 
   // Pending → run handoff: while a run is active on a chat, block its pending
   // queue so messages keep accumulating without flushing. When the run ends,
@@ -311,6 +372,7 @@ export async function startChannel(deps: StartChannelDeps): Promise<BridgeChanne
           sessionCatalog,
           workspaces,
           media,
+          mediaFor,
           batch,
           controls,
           cotClient,
@@ -783,6 +845,17 @@ async function intakeMessage(deps: IntakeDeps): Promise<void> {
     return;
   }
 
+  // Team bot with personal sign-in: greet a new DM with their sign-in link.
+  // The message itself still runs (as the bot until they sign in).
+  const logins = controls.teamLogin?.logins;
+  if (logins && msg.chatType === 'p2p') {
+    void logins
+      .welcomeIfNew(msg.senderId, async (markdown) => {
+        await channel.send(msg.chatId, { markdown });
+      })
+      .catch((err) => log.warn('per-user-login', 'welcome-error', { err: String(err) }));
+  }
+
   const size = pending.push(scope, emsg);
   log.info('intake', 'queued', { scope, queueSize: size, debounceMs: DEBOUNCE_MS });
 }
@@ -794,6 +867,8 @@ interface RunBatchDeps {
   sessionCatalog?: SessionCatalog;
   workspaces: WorkspaceStore;
   media: MediaCache;
+  /** The attachment cache rooted at a team member's own folder. */
+  mediaFor: (dir: string) => MediaCache;
   batch: NormalizedMessage[];
   controls: Controls;
   cotClient: CotClient;
@@ -812,6 +887,7 @@ async function runAgentBatch(deps: RunBatchDeps): Promise<void> {
     sessionCatalog,
     workspaces,
     media,
+    mediaFor,
     batch,
     controls,
     cotClient,
@@ -829,10 +905,34 @@ async function runAgentBatch(deps: RunBatchDeps): Promise<void> {
   const chatId = firstMsg.chatId;
   const threadId = firstMsg.threadId;
 
+  // Team mode: who this run may act as. A DM (one sender per p2p chat) runs
+  // as that person, in their own folders; everything else is bot-only.
+  let larkIdentity: AgentLarkIdentity | undefined = controls.teamLogin?.shared;
+  let personRun: PersonRun | undefined;
+  const logins = controls.teamLogin?.logins;
+  if (logins && firstMsg.chatType === 'p2p') {
+    try {
+      personRun = await logins.runFor(firstMsg.senderId);
+      larkIdentity = personRun.identity;
+    } catch (err) {
+      log.warn('per-user-login', 'prepare-failed', {
+        user: firstMsg.senderId.slice(-6),
+        err: String(err),
+      });
+      await channel.send(
+        chatId,
+        { markdown: "Sorry — I couldn't prepare your personal workspace, so I didn't run this. Please try again in a minute." },
+        { replyTo: lastMsg.messageId },
+      );
+      return;
+    }
+  }
+  const runMedia = personRun ? mediaFor(personRun.attachmentsDir) : media;
+
   const resourceItems = batch.flatMap((m) =>
     m.resources.map((r) => ({ messageId: m.messageId, resource: r })),
   );
-  const attachments = await media.resolve(resourceItems, controls.profileConfig.attachments);
+  const attachments = await runMedia.resolve(resourceItems, controls.profileConfig.attachments);
   if (attachments.length > 0) {
     log.info('media', 'resolved', { count: attachments.length });
     for (const attachment of attachments) {
@@ -973,6 +1073,8 @@ async function runAgentBatch(deps: RunBatchDeps): Promise<void> {
     executor,
     now: Date.now(),
     stopGraceMs: getAgentStopGraceMs(controls.cfg),
+    ...(larkIdentity ? { larkIdentity } : {}),
+    ...(personRun ? { cwdOverride: personRun.cwd } : {}),
     observability: {
       profile: controls.profile,
       agent: capability.agentId,

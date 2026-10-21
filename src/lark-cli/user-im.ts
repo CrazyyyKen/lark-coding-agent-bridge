@@ -15,6 +15,18 @@ export interface UserImContext {
   profile: string;
   /** LARK_CHANNEL_HOME root; undefined = default. */
   rootDir?: string;
+  /**
+   * lark-cli config dir to use instead of the profile's own — a team member's
+   * personal login folder (see per-user-login.ts).
+   */
+  larkCliConfigDir?: string;
+}
+
+/** What a device-flow sign-in asks for. Empty = lark-cli's default (all domains). */
+export interface DeviceLoginRequest {
+  scopes?: string[];
+  domains?: string[];
+  exclude?: string[];
 }
 
 export interface UserAuthStatus {
@@ -105,7 +117,7 @@ function larkCliEnv(ctx: UserImContext): NodeJS.ProcessEnv {
     profile: appPaths.profile,
     rootDir: appPaths.rootDir,
     configPath: appPaths.configFile,
-    larkCliConfigDir: appPaths.larkCliConfigDir,
+    larkCliConfigDir: ctx.larkCliConfigDir ?? appPaths.larkCliConfigDir,
     larkCliSourceConfigFile: appPaths.larkCliSourceConfigFile,
   });
 }
@@ -196,11 +208,20 @@ export async function startDeviceLogin(
 ): Promise<DeviceLogin> {
   // Request exactly the scopes we need (not `--domain im`) so authorization
   // isn't rejected for unrelated un-grantable scopes like im:message.send_as_user.
-  const r = await exec(
-    ['auth', 'login', '--no-wait', '--json', '--scope', scopes.join(' ')],
-    larkCliEnv(ctx),
-    30_000,
-  );
+  return startDeviceLoginFor(ctx, { scopes }, exec);
+}
+
+/** {@link startDeviceLogin} for an arbitrary scope / domain request. */
+export async function startDeviceLoginFor(
+  ctx: UserImContext,
+  request: DeviceLoginRequest,
+  exec: LarkCliExec = defaultExec,
+): Promise<DeviceLogin> {
+  const args = ['auth', 'login', '--no-wait', '--json'];
+  if (request.scopes && request.scopes.length > 0) args.push('--scope', request.scopes.join(' '));
+  if (request.domains && request.domains.length > 0) args.push('--domain', request.domains.join(','));
+  if (request.exclude && request.exclude.length > 0) args.push('--exclude', request.exclude.join(','));
+  const r = await exec(args, larkCliEnv(ctx), 30_000);
   const json = parseJson(r.stdout);
   // Prefer the known device-flow field names (both snake_case and camelCase),
   // then fall back to a fuzzy match so a minor lark-cli rename won't break it.
@@ -233,16 +254,21 @@ export async function startDeviceLogin(
   return { verificationUrl, deviceCode, ...(userCode ? { userCode } : {}), ...(expiresIn ? { expiresIn } : {}) };
 }
 
-/** Complete the device flow after the user authorized in the browser. */
+/**
+ * Complete the device flow after the user authorized in the browser. lark-cli
+ * polls until the user approves or the code expires, so a caller waiting in
+ * the background passes a `timeoutMs` that covers the code's lifetime.
+ */
 export async function completeDeviceLogin(
   ctx: UserImContext,
   deviceCode: string,
   exec: LarkCliExec = defaultExec,
+  timeoutMs = 30_000,
 ): Promise<{ ok: boolean; message?: string }> {
   const r = await exec(
     ['auth', 'login', '--device-code', deviceCode, '--json'],
     larkCliEnv(ctx),
-    30_000,
+    timeoutMs,
   );
   if (r.code === 0) return { ok: true };
   const json = parseJson(r.stdout);
@@ -251,6 +277,33 @@ export async function completeDeviceLogin(
     r.stderr.trim() ??
     '授权尚未完成，请先在浏览器里确认授权后重试';
   return { ok: false, message };
+}
+
+/** Remove the signed-in user's token from the login folder. */
+export async function logoutUser(
+  ctx: UserImContext,
+  exec: LarkCliExec = defaultExec,
+): Promise<{ ok: boolean; message?: string }> {
+  const r = await exec(['auth', 'logout', '--json'], larkCliEnv(ctx), 15_000);
+  return r.code === 0 ? { ok: true } : { ok: false, message: cliError(r, '退出登录失败') };
+}
+
+/**
+ * Bind a fresh login folder to this profile's app (lark-cli `config bind`,
+ * the same binding preflight creates for the profile's own folder), allowing
+ * user identity. The app secret is not copied: lark-cli resolves it through
+ * the bridge's source projection, as it does for the profile's folder.
+ */
+export async function bindLoginFolder(
+  ctx: UserImContext,
+  exec: LarkCliExec = defaultExec,
+): Promise<{ ok: boolean; message?: string }> {
+  const r = await exec(
+    ['config', 'bind', '--source', 'lark-channel', '--identity', 'user-default'],
+    larkCliEnv(ctx),
+    30_000,
+  );
+  return r.code === 0 ? { ok: true } : { ok: false, message: cliError(r, '初始化登录目录失败') };
 }
 
 export interface UserChatsPage {

@@ -177,13 +177,20 @@ export function resumeCard(cwd: string, entries: ResumeEntry[]): object {
   return shell('🔁 恢复历史会话', elements);
 }
 
-export function helpCard(agentName = 'Agent'): object {
+export function helpCard(agentName = 'Agent', opts: { personalLogin?: boolean } = {}): object {
   const escapedAgentName = escapeMd(agentName);
   return shell('💡 使用帮助', [
     divMd(
       [
         '**命令列表**',
         '',
+        ...(opts.personalLogin
+          ? [
+              '- `/login` — 用你自己的飞书账号登录一次（私聊发送）',
+              '- `/whoami` — 查看你的登录状态',
+              '- `/logout` — 删除你的登录',
+            ]
+          : []),
         '- `/new` `/reset` — 清空当前 chat 的会话',
         '- `/new chat [name]` — 新建群+新会话，自动拉你进群',
         '- `/resume [N]` — 列出并恢复历史会话（最多 N 条）',
