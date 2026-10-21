@@ -21,12 +21,12 @@ export function renderText(state: RunState): string {
   }
 
   if (state.terminal === 'interrupted') {
-    parts.push('_⏹ 已被中断_');
+    parts.push('_⏹ Interrupted_');
   } else if (state.terminal === 'idle_timeout') {
     const mins = state.idleTimeoutMinutes ?? 0;
-    parts.push(`_⏱ ${mins} 分钟无响应,已自动终止_`);
+    parts.push(`_⏱ No response for ${mins} min, stopped automatically_`);
   } else if (state.terminal === 'error' && state.errorMsg) {
-    parts.push(`⚠️ agent 失败:${state.errorMsg}`);
+    parts.push(`⚠️ Agent failed: ${state.errorMsg}`);
   } else if (state.terminal === 'running' && state.footer) {
     parts.push(footerLine(state.footer));
   }
@@ -55,7 +55,7 @@ function toolLine(tool: ToolEntry): string {
 }
 
 function footerLine(status: 'thinking' | 'tool_running' | 'streaming'): string {
-  if (status === 'thinking') return '_🧠 正在思考…_';
-  if (status === 'tool_running') return '_🧰 正在调用工具…_';
-  return '_✍️ 正在输出…_';
+  if (status === 'thinking') return '_🧠 Thinking…_';
+  if (status === 'tool_running') return '_🧰 Calling tools…_';
+  return '_✍️ Writing…_';
 }

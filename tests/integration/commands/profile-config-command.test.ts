@@ -164,9 +164,9 @@ describe('profile-aware account and config commands', () => {
       'bot-only',
     ]);
     const card = JSON.stringify(h.channel.sent.at(-1)?.content);
-    expect(card).toContain('保存失败');
-    expect(card).toContain('lark-cli 身份策略');
-    expect(card).not.toContain('偏好已保存');
+    expect(card).toContain('Save failed');
+    expect(card).toContain('lark-cli identity policy');
+    expect(card).not.toContain('Settings saved');
   });
 
   it('rolls back lark-cli identity when saving config fails after applying the runtime policy', async () => {
@@ -198,10 +198,10 @@ describe('profile-aware account and config commands', () => {
       'bot-only',
     ]);
     const card = JSON.stringify(h.channel.sent.at(-1)?.content);
-    expect(card).toContain('保存失败');
-    expect(card).toContain('已回滚');
-    expect(card).not.toContain('未做任何修改');
-    expect(card).not.toContain('偏好已保存');
+    expect(card).toContain('Save failed');
+    expect(card).toContain('rolled back');
+    expect(card).not.toContain('Nothing was changed');
+    expect(card).not.toContain('Settings saved');
   });
 
   it('saves /account submit into the active v2 profile and profile-local keystore', async () => {

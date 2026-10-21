@@ -440,7 +440,7 @@ describe('merge_forward fetch failure', () => {
     expect(h.channel.streams).toHaveLength(0);
     const hint = h.channel.sent.at(-1);
     expect(hint?.options).toMatchObject({ replyTo: 'om_forward_failed' });
-    expect((hint?.content as { text?: string }).text).toContain('重新转发');
+    expect((hint?.content as { text?: string }).text).toContain('forward it again');
   });
 
   it('still runs when a merge_forward was genuinely empty (not a fetch failure)', async () => {

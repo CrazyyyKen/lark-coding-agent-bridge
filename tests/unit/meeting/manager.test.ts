@@ -178,7 +178,7 @@ describe('MeetingManager routing', () => {
 
 describe('describeMeetingError', () => {
   it('explains the allowlisted-beta gate (20017) instead of leaking the raw code', () => {
-    expect(describeMeetingError(new VcApiError(20017, 'ErrNotInGray', '/join'))).toMatch(/内测/);
+    expect(describeMeetingError(new VcApiError(20017, 'ErrNotInGray', '/join'))).toMatch(/beta/);
   });
 
   it('passes other errors through', () => {

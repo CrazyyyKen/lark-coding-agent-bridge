@@ -11,7 +11,7 @@ export async function fetchKnownChats(channel: LarkChannel): Promise<KnownChat[]
     const summaries = await channel.listChats({ pageSize: 100, maxPages: 5 });
     const chats: KnownChat[] = summaries.map((c) => ({
       id: c.id,
-      name: c.name || '(无名)',
+      name: c.name || '(unnamed)',
     }));
     log.info('lark-info', 'chats-fetched', { count: chats.length });
     return chats;

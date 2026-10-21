@@ -134,7 +134,7 @@ describe('comment lifecycle', () => {
     await running;
 
     expect(h.agent.stopped).toBe(true);
-    expect(h.channel.inThreadReplies).toEqual(['本次评论任务已超时，请重新 @ 我。']);
+    expect(h.channel.inThreadReplies).toEqual(['This comment task timed out. Please @ me again.']);
   });
 
   it('uses the per-comment timeout override for comment runs with subsequent events', async () => {
@@ -151,7 +151,7 @@ describe('comment lifecycle', () => {
     await running;
 
     expect(h.agent.stopped).toBe(true);
-    expect(h.channel.inThreadReplies).toEqual(['本次评论任务已超时，请重新 @ 我。']);
+    expect(h.channel.inThreadReplies).toEqual(['This comment task timed out. Please @ me again.']);
   });
 
   it('does not expire comment runs when the per-comment timeout override is off', async () => {

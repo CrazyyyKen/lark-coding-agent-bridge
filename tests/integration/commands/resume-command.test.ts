@@ -73,11 +73,11 @@ describe('agent-aware resume commands', () => {
 
     await expect(h.run('/resume use sess-stale')).resolves.toBe(true);
     expect(h.sessions.getRaw('chat-1')).toBeUndefined();
-    expect(lastMarkdown(h.channel)).toContain('不可恢复');
+    expect(lastMarkdown(h.channel)).toContain("can't be resumed");
 
     await expect(h.run('/resume use sess-current')).resolves.toBe(true);
     expect(h.sessions.resumeFor('chat-1', h.identity.cwdRealpath)).toBe('sess-current');
-    expect(lastMarkdown(h.channel)).toContain('已完成');
+    expect(lastMarkdown(h.channel)).toContain('Done.');
   });
 
   it('resumes the selected Claude history entry from the card button callback', async () => {
@@ -106,7 +106,7 @@ describe('agent-aware resume commands', () => {
     expect(h.catalog.activeFor(h.identity)).toMatchObject({
       sessionId: 'sess-target',
     });
-    expect(lastMarkdown(h.channel)).toContain('已完成');
+    expect(lastMarkdown(h.channel)).toContain('Done.');
   });
 
   it('accepts the current Codex thread without writing it into legacy SessionStore', async () => {
@@ -119,7 +119,7 @@ describe('agent-aware resume commands', () => {
     await expect(h.run(`/resume use ${nonce}`)).resolves.toBe(true);
 
     expect(h.sessions.getRaw('chat-1')).toBeUndefined();
-    expect(lastMarkdown(h.channel)).toContain('已完成');
+    expect(lastMarkdown(h.channel)).toContain('Done.');
   });
 
   it('falls back to an audit-safe reply when resume confirmation is rejected', async () => {
@@ -142,7 +142,7 @@ describe('agent-aware resume commands', () => {
     await expect(h.run(`/resume use ${nonce}`)).resolves.toBe(true);
 
     expect(attempts).toBe(2);
-    expect(lastMarkdown(h.channel)).toBe('命令已处理。');
+    expect(lastMarkdown(h.channel)).toBe('Command processed.');
   });
 
   it('shows only the current catalog-backed Codex thread in /resume', async () => {
@@ -151,7 +151,7 @@ describe('agent-aware resume commands', () => {
 
     await expect(h.run('/resume')).resolves.toBe(true);
 
-    expect(lastMarkdown(h.channel)).toContain('当前 Codex thread 可恢复');
+    expect(lastMarkdown(h.channel)).toContain('The current Codex thread can be resumed');
     expect(lastMarkdown(h.channel)).toMatch(/\/resume use [a-f0-9-]+/);
     expect(lastMarkdown(h.channel)).not.toContain('thread-current');
   });
@@ -163,7 +163,7 @@ describe('agent-aware resume commands', () => {
     await expect(h.run('/resume use thread-current')).resolves.toBe(true);
 
     expect(h.sessions.getRaw('chat-1')).toBeUndefined();
-    expect(lastMarkdown(h.channel)).toContain('请先用 `/resume`');
+    expect(lastMarkdown(h.channel)).toContain('Run `/resume` again');
   });
 
   it('does not fall back to legacy SessionStore when Codex catalog identity is missing', async () => {
@@ -172,7 +172,7 @@ describe('agent-aware resume commands', () => {
     await expect(h.run('/resume use thread-current', { withCatalogIdentity: false })).resolves.toBe(true);
 
     expect(h.sessions.getRaw('chat-1')).toBeUndefined();
-    expect(lastMarkdown(h.channel)).toContain('当前上下文没有可恢复的 Codex thread');
+    expect(lastMarkdown(h.channel)).toContain('No Codex thread to resume here');
   });
 
   it('does not list Claude local history for Codex when no current thread is recorded', async () => {
@@ -180,7 +180,7 @@ describe('agent-aware resume commands', () => {
 
     await expect(h.run('/resume')).resolves.toBe(true);
 
-    expect(lastContentString(h.channel)).toContain('此 cwd 下没有历史会话');
+    expect(lastContentString(h.channel)).toContain('No past sessions in this cwd');
   });
 
   it('lists Codex history for the current cwd and resumes the selected thread through a nonce', async () => {
@@ -207,7 +207,7 @@ describe('agent-aware resume commands', () => {
       threadId: 'thread-beta-secret',
     });
     expect(h.sessions.getRaw('chat-1')).toBeUndefined();
-    expect(lastMarkdown(h.channel)).toContain('已完成');
+    expect(lastMarkdown(h.channel)).toContain('Done.');
   });
 
   it('resumes a Codex history selection from the card button callback', async () => {
@@ -223,7 +223,7 @@ describe('agent-aware resume commands', () => {
     expect(h.catalog.activeFor(h.identity)).toMatchObject({
       threadId: 'thread-alpha-secret',
     });
-    expect(lastMarkdown(h.channel)).toContain('已完成');
+    expect(lastMarkdown(h.channel)).toContain('Done.');
   });
 
   it('keeps Codex resume history details out of group chats like Claude', async () => {
@@ -233,7 +233,7 @@ describe('agent-aware resume commands', () => {
     await expect(h.run('/resume', { chatMode: 'group' })).resolves.toBe(true);
 
     const rendered = lastContentString(h.channel);
-    expect(rendered).toContain('私聊');
+    expect(rendered).toContain('DM the bot');
     expect(rendered).not.toContain('alpha prompt');
     expect(rendered).not.toContain('thread-alpha-secret');
   });
@@ -244,7 +244,7 @@ describe('agent-aware resume commands', () => {
     await expect(h.run('/status')).resolves.toBe(true);
     let status = JSON.stringify(lastContent(h.channel));
     expect(status).toContain('**session**');
-    expect(status).toContain('未建立');
+    expect(status).toContain('not started');
     expect(status).not.toContain('**thread**');
     expect(status).not.toContain('**conversation**');
 
@@ -254,7 +254,7 @@ describe('agent-aware resume commands', () => {
     status = JSON.stringify(lastContent(h.channel));
     expect(status).toContain('**session**');
     expect(status).toContain('thread-c');
-    expect(status).not.toContain('未建立');
+    expect(status).not.toContain('not started');
   });
 
   it('does not list local history from home when no workspace is bound', async () => {
@@ -262,7 +262,7 @@ describe('agent-aware resume commands', () => {
 
     await expect(h.run('/resume')).resolves.toBe(true);
 
-    expect(lastMarkdown(h.channel)).toContain('请先使用 /cd');
+    expect(lastMarkdown(h.channel)).toContain('Pick a workspace with /cd');
   });
 });
 

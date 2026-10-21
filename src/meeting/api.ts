@@ -78,7 +78,7 @@ function asVcApiError(err: unknown, endpoint: string): VcApiError | undefined {
   if (code === undefined) return undefined;
   const msg = typeof data.msg === 'string' && data.msg ? data.msg : `VC API failed with code ${code}`;
   const status = isRecord(response) && typeof response.status === 'number' ? response.status : undefined;
-  return new VcApiError(code, status ? `${msg}（HTTP ${status}）` : msg, endpoint);
+  return new VcApiError(code, status ? `${msg} (HTTP ${status})` : msg, endpoint);
 }
 
 async function call<T>(
@@ -122,7 +122,7 @@ export async function joinMeeting(
 ): Promise<JoinedMeeting> {
   const meetingNo = opts.meetingNo.trim();
   if (!isMeetingNo(meetingNo)) {
-    throw new Error(`会议号必须是 9 位数字：${opts.meetingNo}`);
+    throw new Error(`Meeting number must be 9 digits: ${opts.meetingNo}`);
   }
   const data = await call<{ meeting?: { id?: string; topic?: string } }>(client, {
     method: 'POST',
@@ -136,7 +136,7 @@ export async function joinMeeting(
     },
   });
   const meetingId = data.meeting?.id;
-  if (!meetingId) throw new Error('入会成功但未返回 meeting.id');
+  if (!meetingId) throw new Error('Joined the meeting but no meeting.id was returned');
   log.info('meeting', 'joined', { meetingNo, meetingId });
   return { meetingId, meetingNo, ...(data.meeting?.topic ? { topic: data.meeting.topic } : {}) };
 }

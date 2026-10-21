@@ -45,7 +45,7 @@ export async function validateAppCredentials(
       body: JSON.stringify({ app_id: appId, app_secret: appSecret }),
     });
   } catch (err) {
-    return { ok: false, reason: `网络错误：${err instanceof Error ? err.message : String(err)}` };
+    return { ok: false, reason: `Network error: ${err instanceof Error ? err.message : String(err)}` };
   }
   if (!resp.ok) return { ok: false, reason: `HTTP ${resp.status}` };
 
@@ -53,7 +53,7 @@ export async function validateAppCredentials(
   try {
     data = (await resp.json()) as TokenResp;
   } catch {
-    return { ok: false, reason: '响应不是合法 JSON' };
+    return { ok: false, reason: 'Response is not valid JSON' };
   }
   if (data.code !== 0 || !data.tenant_access_token) {
     return { ok: false, reason: `code=${data.code ?? '?'} msg=${data.msg ?? '<no msg>'}` };

@@ -117,7 +117,7 @@ export class MeetingManager {
     if (typeof channel?.onRawEvent !== 'function') {
       this.push = {
         hooked: false,
-        reason: 'channel 不支持 onRawEvent（需要 @larksuite/channel >= 0.5.0），已降级为轮询',
+        reason: 'channel does not support onRawEvent (needs @larksuite/channel >= 0.5.0); fell back to polling',
         received: 0,
       };
       log.warn('meeting', 'push-hook-unavailable', { reason: this.push.reason });
@@ -141,7 +141,7 @@ export class MeetingManager {
       log.info('meeting', 'push-hooked', {});
     } catch (err) {
       this.detachPush();
-      this.push = { hooked: false, reason: `注册事件失败：${String(err)}`, received: 0 };
+      this.push = { hooked: false, reason: `Failed to register events: ${String(err)}`, received: 0 };
       log.warn('meeting', 'push-hook-failed', { err: String(err) });
     }
     return this.pushHealth();
@@ -275,7 +275,7 @@ export class MeetingManager {
 /** Human-readable hint for the allowlisted-beta failure, else the raw message. */
 export function describeMeetingError(err: unknown): string {
   if (err instanceof VcApiError && err.notInGray) {
-    return '智能体入会能力尚未对本应用开通（错误码 20017）。需要先申请加入内测，再重试。';
+    return 'The meeting-agent capability is not enabled for this app yet (error code 20017). Apply to join the beta first, then try again.';
   }
   return err instanceof Error ? err.message : String(err);
 }

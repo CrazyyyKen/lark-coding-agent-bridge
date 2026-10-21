@@ -112,7 +112,7 @@ describe('summarizeEndedMeeting', () => {
     expect(mocks.startRunFlow).toHaveBeenCalledTimes(1);
     expect(d.sent).toHaveLength(1);
     expect(d.sent[0]?.to).toBe('oc_team');
-    expect(String((d.sent[0]?.input as { markdown: string }).markdown)).toContain('会议纪要 · 周会');
+    expect(String((d.sent[0]?.input as { markdown: string }).markdown)).toContain('Meeting notes · 周会');
     expect(String((d.sent[0]?.input as { markdown: string }).markdown)).toContain('周五上线');
   });
 

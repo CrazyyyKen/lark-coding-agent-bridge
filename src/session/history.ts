@@ -84,7 +84,7 @@ async function summarize(path: string): Promise<{ preview: string; lineCount: nu
     rl.close();
     stream.destroy();
   }
-  return { preview: preview || '(空会话)', lineCount };
+  return { preview: preview || '(empty session)', lineCount };
 }
 
 function extractUserText(content: unknown): string {
@@ -104,17 +104,17 @@ function extractUserText(content: unknown): string {
   return '';
 }
 
-/** Format a relative time like "3 小时前", "昨天", "3 天前". */
+/** Format a relative time like "3 hr ago", "yesterday", "3 days ago". */
 export function formatRelTime(mtime: number): string {
   const diffMs = Date.now() - mtime;
   const min = Math.floor(diffMs / 60_000);
-  if (min < 1) return '刚刚';
-  if (min < 60) return `${min} 分钟前`;
+  if (min < 1) return 'just now';
+  if (min < 60) return `${min} min ago`;
   const hr = Math.floor(min / 60);
-  if (hr < 24) return `${hr} 小时前`;
+  if (hr < 24) return `${hr} hr ago`;
   const day = Math.floor(hr / 24);
-  if (day === 1) return '昨天';
-  if (day < 30) return `${day} 天前`;
+  if (day === 1) return 'yesterday';
+  if (day < 30) return `${day} days ago`;
   const mo = Math.floor(day / 30);
-  return `${mo} 个月前`;
+  return mo === 1 ? '1 month ago' : `${mo} months ago`;
 }

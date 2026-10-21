@@ -201,7 +201,7 @@ describe('comment run flow', () => {
     await handleCommentMention(h.deps(event({ commentId: 'comment-1', replyId: 'reply-1' })));
 
     expect(h.agent.runOptions).toEqual([]);
-    expect(h.inThreadReplies.at(-1)).toContain('工作目录不可用');
+    expect(h.inThreadReplies.at(-1)).toContain('Workspace unavailable');
   });
 
   it('does not call the agent adapter directly from the comment entrypoint', async () => {

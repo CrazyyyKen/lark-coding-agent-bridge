@@ -791,8 +791,8 @@ async function sendNonAllowedGroupHint(
   replyToMessageId: string,
 ): Promise<void> {
   const text =
-    '当前群尚未加入响应列表，所以 bot 不会处理消息。\n' +
-    'Bot owner/管理员可在本群发 /invite group 加入白名单。';
+    'This group is not on the allowlist yet, so the bot will not respond to messages here.\n' +
+    'The bot owner or an admin can send /invite group in this group to add it.';
   try {
     await channel.send(chatId, { text }, { replyTo: replyToMessageId });
   } catch {
@@ -825,8 +825,8 @@ async function sendForwardFetchFailedHint(
   replyToMessageId: string,
 ): Promise<void> {
   const text =
-    '这条合并转发的内容没能从飞书拉取到（上游超时/网络抖动，已自动重试仍失败），' +
-    '所以我没收到里面的消息。麻烦稍后重新转发一次。';
+    "I couldn't fetch the contents of this forwarded message from Lark (upstream timeout or network glitch; automatic retries also failed), " +
+    "so I didn't receive the messages inside it. Please forward it again in a moment.";
   try {
     await channel.send(chatId, { text }, { replyTo: replyToMessageId });
   } catch {
@@ -1785,7 +1785,7 @@ async function sendCotDegradedNotice(input: {
   try {
     await input.channel.send(
       input.chatId,
-      { markdown: 'COT 过程消息更新失败，已停止展示过程；最终答案仍会继续发送。' },
+      { markdown: 'Failed to update the CoT progress message, so progress is no longer shown. The final answer will still be sent.' },
       input.sendOpts,
     );
   } catch (err) {

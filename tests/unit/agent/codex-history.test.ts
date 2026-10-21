@@ -58,7 +58,7 @@ describe('Codex thread history provider', () => {
       {
         threadId: 'thread-old',
         sessionId: 'session-old',
-        preview: '(空会话)',
+        preview: '(empty session)',
         cwd: '/repo',
         createdAtMs: 1_699_999_000_000,
         updatedAtMs: 1_699_999_500_000,

@@ -33,12 +33,12 @@ export function toolBodyMd(tool: ToolEntry): string {
       parts.push(`**Output**\n\`\`\`\n${truncated}\n\`\`\``);
     }
   } else if (tool.status === 'running') {
-    parts.push('_运行中…_');
+    parts.push('_Running…_');
   }
 
   const body = parts.join('\n\n');
   if (body.length <= BODY_TOTAL_MAX) return body;
-  return `${body.slice(0, BODY_TOTAL_MAX)}…\n\n_（body 已截断,完整内容查 \`/doctor\` 或日志）_`;
+  return `${body.slice(0, BODY_TOTAL_MAX)}…\n\n_(body truncated; see \`/doctor\` or the logs for the full content)_`;
 }
 
 function summarizeInput(name: string, input: unknown): string {

@@ -23,11 +23,11 @@ describe('configFormCard console URL', () => {
     const url = 'http://127.0.0.1:53219/?token=abc123';
     const card = configFormCard({ ...base, consoleUrl: url });
     expect(JSON.stringify(card)).toContain(url);
-    expect(JSON.stringify(card)).toContain('Web 控制台');
+    expect(JSON.stringify(card)).toContain('Web console');
   });
 
   it('omits the console section when no console is running', () => {
     const card = configFormCard(base);
-    expect(JSON.stringify(card)).not.toContain('Web 控制台');
+    expect(JSON.stringify(card)).not.toContain('Web console');
   });
 });

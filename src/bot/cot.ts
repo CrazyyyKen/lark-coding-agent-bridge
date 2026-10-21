@@ -189,7 +189,7 @@ export class CotPublisher {
     });
     this.enqueue('STEP_STARTED', {
       stepId: `step-understand-${this.runId}`,
-      stepName: '理解用户问题',
+      stepName: 'Understanding the question',
     });
   }
 
@@ -299,7 +299,7 @@ export async function consumeCotEvents(
         const toolCallId = evt.id;
         const detailed = opts.detail === 'detailed';
         const showSummary = opts.detail === 'brief' || detailed;
-        const title = showSummary ? cotBriefToolTitle(evt.name, evt.input, 'running') : '正在调用工具';
+        const title = showSummary ? cotBriefToolTitle(evt.name, evt.input, 'running') : 'Calling tool';
         toolBrief.set(toolCallId, { name: evt.name, input: evt.input });
         publisher.enqueue('TOOL_CALL_START', {
           toolCallId,
@@ -327,7 +327,7 @@ export async function consumeCotEvents(
             ? truncateCot(evt.output ?? '', COT_TOOL_OUTPUT_MAX)
             : brief
               ? cotBriefToolTitle(brief.name, brief.input, evt.isError ? 'error' : 'done')
-              : '工具调用已完成',
+              : 'Tool call finished',
         });
         toolBrief.delete(evt.id);
         continue;
@@ -338,7 +338,7 @@ export async function consumeCotEvents(
           textStepOpen = true;
           publisher.enqueue('STEP_STARTED', {
             stepId: finalStepId,
-            stepName: '输出过程',
+            stepName: 'Writing the answer',
           });
         }
         if (!textMessageOpen) {
@@ -359,7 +359,7 @@ export async function consumeCotEvents(
         if (textStepOpen) {
           publisher.enqueue('STEP_FINISHED', {
             stepId: finalStepId,
-            stepName: '输出过程',
+            stepName: 'Writing the answer',
           });
         }
         if (evt.type === 'error') {

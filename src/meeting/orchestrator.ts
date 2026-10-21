@@ -106,7 +106,7 @@ export function attachMeetingAgent(deps: MeetingAgentDeps): void {
     if (STOP_WORDS.has(question.toLowerCase())) {
       const stopped = deps.activeRuns.interrupt(meetingScopeId(session.meetingId));
       void session
-        .sendMessage(stopped ? '已中断当前任务。' : '当前没有正在执行的任务。')
+        .sendMessage(stopped ? 'Stopped the current task.' : 'No task is running right now.')
         .catch((err) => log.warn('meeting', 'stop-reply-failed', { err: String(err) }));
       return;
     }
@@ -250,7 +250,7 @@ export async function summarizeEndedMeeting(deps: MeetingAgentDeps): Promise<voi
 
   const title = session.topic ?? session.meetingNo;
   await deps.channel
-    .send(target.to, { markdown: `**会议纪要 · ${title}**\n\n${answer}` })
+    .send(target.to, { markdown: `**Meeting notes · ${title}**\n\n${answer}` })
     .catch((err) => log.warn('meeting', 'summary-send-failed', { err: String(err) }));
   log.info('meeting', 'summary-sent', {
     meetingId: session.meetingId,
@@ -342,7 +342,7 @@ async function runMeetingAgent(
         usedPrefix ??
         triggerPrefixes(controls.profileConfig.meeting.trigger, deps.channel.botIdentity?.name)[0] ??
         controls.profileConfig.meeting.trigger;
-      return `上一个任务还在执行。发「${prefix} stop」可以中断它，然后再问我。`;
+      return `The previous task is still running. Send "${prefix} stop" to stop it, then ask me again.`;
     }
     return result.rejectReason.userVisible;
   }
