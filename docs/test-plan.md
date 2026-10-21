@@ -61,7 +61,7 @@ Logs for any row: `docker exec lark-bot-<name> sh -c 'tail -50 ~/.lark-channel/p
 |---|---|---|---|
 | 1.23 | In a group, A: "@bot what's on my calendar?" | Uses the bot identity only; asks A to DM for personal data. | |
 | 1.24 | A @-mentions the bot in a doc comment | Answers as the bot, never as A. | |
-| 1.25 | A: "Email B saying the meeting moved to 3pm" | Shows the draft and **waits**. Sends only after A replies "send". | |
+| 1.25 | A: "Email B saying the meeting moved to 3pm" | Shows the draft with **Send it / Edit / Cancel** buttons and **waits**. Sends only after A taps Send it (or types "send"). | |
 | 1.26 | A: "Send B a Lark message right now: hi" | Sends without a second confirmation (A asked for it immediately). | |
 
 ### Restarts and lifetime
@@ -197,6 +197,44 @@ The image will build from this repo instead of npm. Rebuilding and restarting ke
 | 7.9 | Start a long task, restart mid-run | If the bot had already started answering, the reply is cut off. If not, **nothing at all** appears (seen 2026-10-21): the user must resend. Asking again works. | |
 | 7.10 | `/config` settings after restart | Same as before the deploy (mode, access, model) | |
 | 7.11 | Claude Code version: `docker exec lark-bot-<name> claude --version` | Note it. The rebuild installs the latest Claude Code unless pinned; check nothing behaves differently. | |
+
+## 8. Buttons (branch `feat/action-cards`)
+
+Do these on a phone as well as desktop: the point is fewer taps on mobile.
+
+### Quick replies under replies
+
+| # | Do | Expect | ✓ / notes |
+|---|---|---|---|
+| 8.1 | "Draft a reply to <a real email>" | Draft in the reply, then a row of buttons such as **Send it · Edit · Cancel**. The reply text has no ` ```quick-replies ` block in it. | |
+| 8.2 | Tap **Edit** | The button row turns into "✔ Edit"; the bot asks what to change, as if you had typed "Edit". | |
+| 8.3 | Get a new draft, tap **Send it** | The email is sent (check Sent). Buttons show "✔ Send it". | |
+| 8.4 | Tap the same button again | "Those buttons have expired — just type your answer." Nothing is sent twice. | |
+| 8.5 | Ignore the buttons and type "cancel" | Works as before; typing always works. | |
+| 8.6 | Team bot, in a group: A asks "@bot draft a message to B", B taps **Send it** | Nothing happens for B's tap. A's tap works. | |
+| 8.7 | Morning triage (or "triage my unread inbox") | Ends with useful next steps as buttons ("Archive 4–7", "Draft replies for 1 and 3"…). Tapping one does it with your login. | |
+| 8.8 | Restart the bot, then tap an old button | "expired" message; nothing runs. | |
+| 8.9 | Ask something that needs no choice ("what time is it in London?") | No buttons. | |
+| 8.10 | A button that starts with `/` (e.g. the bot offers `/schedule list`) | Runs the command (the task list card appears); the agent isn't asked. | |
+
+### Sign-in (team bot with per-person login)
+
+| # | Do | Expect | ✓ / notes |
+|---|---|---|---|
+| 8.11 | New member DMs `hi` | Welcome card with a **Sign in with Lark** button (and the raw link at the bottom). Tapping it opens the sign-in page. | |
+| 8.12 | `/login` | Same card, titled "Sign in to Lark". | |
+| 8.13 | `/whoami` signed out → tap **🔑 Sign in** | A sign-in card arrives. | |
+| 8.14 | `/whoami` signed in → tap **Sign out** | Signed out; `/whoami` now offers Sign in. | |
+| 8.15 | Signed out, ask "what's on my calendar?" | Bot explains you need to sign in and offers a `/login` button; tapping it sends the sign-in card. | |
+
+### Help and scheduled runs
+
+| # | Do | Expect | ✓ / notes |
+|---|---|---|---|
+| 8.16 | `/help` → **📅 My scheduled tasks** | Task list card. On a team bot, **🔑 Sign in** and **👤 Who am I** also work. | |
+| 8.17 | A scheduled task runs | It starts with a **⏰ Scheduled task** card with **Run again** and **Pause schedule**; the answer appears under it. | |
+| 8.18 | Tap **Pause schedule** | Card shows **Resume schedule**; `/schedule list` shows it paused; it doesn't run at the next time. | |
+| 8.19 | Tap **Resume schedule**, then **Run again** | Resumed with a new next run; Run again runs it now. | |
 
 ## Note on full access
 

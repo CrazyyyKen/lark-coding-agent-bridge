@@ -43,9 +43,11 @@ These appear only on team bots that have per-person login turned on. Each one ac
 
 | Command | Who | What it does |
 |---|---|---|
-| `/login` | everyone | Sign in once with your own Lark account, so the bot reads your docs and calendar as you. Send it in a DM. |
-| `/whoami` | everyone | Show whether you're signed in. |
+| `/login` | everyone | Sign in once with your own Lark account, so the bot reads your docs and calendar as you. Send it in a DM. Replies with a **Sign in with Lark** button. |
+| `/whoami` | everyone | Show whether you're signed in, with a **Sign out** (or **Sign in**) button. |
 | `/logout` | everyone | Delete your login from the bot. |
+
+The first time you DM a team bot it greets you with the same **Sign in with Lark** card.
 
 ## Scheduled tasks
 
@@ -76,6 +78,7 @@ Send these in a **DM** with the bot. A task belongs to whoever created it: nobod
 - Times are in the bot's time zone (`Asia/Kuala_Lumpur` on the server); `/schedule` shows it.
 - At most 10 tasks per person, at most one run every 15 minutes, and a task can be up to 2,000 characters.
 - The bot runs tasks only while it's online. If it was offline at the due time but is back within an hour, the task still runs; after that it tells you it skipped the run, with a **Run it now** button.
+- Each run starts with a **⏰ Scheduled task** card with **Run again** and **Pause schedule** buttons, so you can stop a task straight from its output.
 - **Easiest:** just ask the bot ("every weekday at 8:30, summarize my inbox"). It shows the `/schedule add …` line and a **📅 Create this scheduled task?** card; tap **Create schedule**. Only you can tap it, and nothing is created until you do.
 
 Comes from the `feat/scheduler` branch of lark-coding-agent-bridge; how it works is in that repo's `docs/scheduled-tasks.md`.
@@ -111,6 +114,15 @@ Needs **Meeting agent** turned on in `/config`, then a bot restart.
 | `/reconnect` | admin | Force a reconnect if the bot stopped responding after a network blip. |
 | `/doctor [description]` | admin | Hand the bot's logs and your description to the agent to diagnose. |
 | `/doc` | everyone | Explains doc comments: @mention the bot in a supported cloud-doc comment and it replies there. No setup needed. |
+
+## Buttons under the bot's replies
+
+When the bot needs you to choose (send a draft or not, what to do after an inbox triage), it puts the choices as buttons under its reply, for example **Send it · Edit the draft · Cancel**, or **Archive 4–7 · Draft replies for 1 and 3**.
+
+- Tapping a button is the same as typing that text as your next message. You can always type instead.
+- Only the person the bot was answering can tap them; in a group, other people's taps do nothing. Each set of buttons can be answered once, and they expire after a day or when the bot restarts.
+- A button that starts with `/` (like `/schedule list` or `/login`) runs that command.
+- `/help` also has buttons: **📅 My scheduled tasks**, and on team bots **🔑 Sign in** and **👤 Who am I**.
 
 ## Not a command
 

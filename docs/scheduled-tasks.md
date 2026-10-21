@@ -30,6 +30,7 @@ The bridge process stays up, so it keeps the timetable. When a task is due it po
 - **Asking in plain words.** When someone asks the agent for a recurring task, it writes the `/schedule add …` line on its own line in its reply. After the reply, the bridge finds such lines (up to 3) and posts a **📅 Create this scheduled task?** card under it: **Create schedule** / **Not now**. Nothing is created until someone taps. Only the person who asked can confirm, and only once (a second tap creates no duplicate). Suggestions are checked like `/schedule add` before the card is shown, live in memory for 24 hours, and expire on restart (the visible command still works). A line slipped into the reply by an email or document still needs that person's tap.
 - **Task list.** `/schedule list` buttons act only on the clicker's own tasks.
 - **Missed run.** The "skipped" notice has a **Run it now** button.
+- **Each run.** The task starts with a **⏰ Scheduled task** card (the run's reply hangs off it) with **Run again** and **Pause schedule**; Pause turns the card into **Resume schedule**. Those buttons carry `arg: "<id> run-card"` so the tap redraws that card, not the task list.
 
 Buttons carry `{cmd: 'schedule.<sub>', arg: <id>}` and run as `/schedule <sub> <id>` with the clicker as sender (the existing card-command path in `src/card/dispatcher.ts`).
 
