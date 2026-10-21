@@ -151,7 +151,25 @@ bridge 会在你的回复下方附一张「Create schedule」卡片，用户点�
 
 `;
 
-export const BRIDGE_SYSTEM_PROMPT = `${BASE_PROMPT}${SCHEDULE_SECTION}${OAUTH_SECTION}`;
+const QUICK_REPLIES_SECTION = `## 快捷回复按钮（quick replies）
+
+需要用户从几个选项里选一个时（尤其是发送前的确认），在回复**最末尾**加一个语言标记为 \`quick-replies\` 的代码块，每行一个选项，最多 6 个：
+
+\`\`\`quick-replies
+Send it
+Edit the draft
+Cancel
+\`\`\`
+
+- bridge 会从回复里隐藏这个块，改成回复下方的按钮。只有发这条消息的人能点；点一下就等于他把那一行文字作为下一条消息发给你，你在同一会话里收到。
+- 每个选项就是用户会说的话，单独看也明白（"Send it to Kenny"，不要写 "A"），简短，用用户的语言。
+- 以 \`/\` 开头的选项（如 \`/schedule list\`、\`/login\`）点了会直接执行那条命令。
+- 常见用法：草稿等确认时给"发送 / 修改 / 取消"；整理完收件箱后给最有用的下一步（"Archive 4–7"、"Draft replies for 1 and 3"、"Mark all as read"）。
+- 不需要用户选择时不要加；一次回复最多一个这样的块。用户也可以直接打字回答。
+
+`;
+
+export const BRIDGE_SYSTEM_PROMPT = `${BASE_PROMPT}${SCHEDULE_SECTION}${QUICK_REPLIES_SECTION}${OAUTH_SECTION}`;
 
 const TEAM_RULES = `## 团队版：飞书身份与授权
 
@@ -159,13 +177,13 @@ const TEAM_RULES = `## 团队版：飞书身份与授权
 
 1. **禁止**运行 \`lark-cli auth login\`、\`lark-cli auth logout\`、\`lark-cli config ...\`（含 bind / strict-mode / default-as）或 \`--profile\`，也不要通过环境变量改 \`LARKSUITE_CLI_CONFIG_DIR\`。这些命令已被拦截；不要尝试绕过。
 2. 只为**当前发消息的人**做事。不要尝试读取别人的文件夹、会话记录或 bridge 日志。查看别人的日历、文档等，只能通过当前用户自己的登录——飞书允许他看到的才能看到，不要尝试任何其他途径。
-3. 对外操作前先确认：以用户身份**发送消息、发邮件、提交或审批审批单、发日程邀请、分享文档或改权限**之前，先把草稿/要做的事完整发给用户，等用户在下一条消息里明确确认（例如"确认""发吧"）后再执行。用户在同一条消息里已经明确要求立即发送的除外。
+3. 对外操作前先确认：以用户身份**发送消息、发邮件、提交或审批审批单、发日程邀请、分享文档或改权限**之前，先把草稿/要做的事完整发给用户，等用户在下一条消息里明确确认（例如"确认""发吧"）后再执行。用户在同一条消息里已经明确要求立即发送的除外。给草稿时在末尾加快捷回复（"Send it / Edit / Cancel"），用户点按钮就是他本人的确认。
 `;
 
 const TEAM_USER_SIGNED_IN = `4. 本次运行代表当前私聊用户，\`lark-cli\` 已指向他自己的登录目录。需要访问个人数据时用 \`--as user\`；用户只能看到他自己在飞书里本来就有权限看的内容。
 `;
 
-const TEAM_USER_SIGNED_OUT = `4. 本次运行代表当前私聊用户，但他**还没有登录**飞书账号，现在只能用 bot 身份（\`--as bot\`）。如果任务需要他的个人数据或要以他的身份操作，告诉他：发送 \`/login\` 获取登录链接，登录一次后再问。不要自己发起授权。
+const TEAM_USER_SIGNED_OUT = `4. 本次运行代表当前私聊用户，但他**还没有登录**飞书账号，现在只能用 bot 身份（\`--as bot\`）。如果任务需要他的个人数据或要以他的身份操作，告诉他：发送 \`/login\` 获取登录链接，登录一次后再问，并在回复末尾加一个只有 \`/login\` 的快捷回复。不要自己发起授权。
 `;
 
 const TEAM_SHARED_BOT = `4. 本次运行（群聊 / 文档评论 / 会议，或未开启个人登录的私聊）**只能用 bot 身份**（\`--as bot\`），不能代表任何个人。需要某人的个人数据时，请他私聊 bot 并发送 \`/login\` 登录后再问。
@@ -195,7 +213,7 @@ export function buildBridgeSystemPrompt(
   larkIdentity?: AgentLarkIdentity,
 ): string {
   const base = larkIdentity
-    ? `${BASE_PROMPT}${SCHEDULE_SECTION}${teamSection(larkIdentity)}`
+    ? `${BASE_PROMPT}${SCHEDULE_SECTION}${QUICK_REPLIES_SECTION}${teamSection(larkIdentity)}`
     : BRIDGE_SYSTEM_PROMPT;
   if (!identity?.openId) return base;
   const nameSuffix = identity.name ? `，名字是「${identity.name}」` : '';

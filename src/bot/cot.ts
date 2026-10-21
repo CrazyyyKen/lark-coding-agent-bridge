@@ -3,6 +3,7 @@ import type { CotMessagesMode, TenantBrand } from '../config/schema';
 import { log } from '../core/logger';
 import { toolHeaderText } from '../card/tool-render';
 import type { RunState } from '../card/run-state';
+import { createQuickReplyFilter } from './quick-replies';
 
 const ENDPOINTS: Record<TenantBrand, string> = {
   feishu: 'https://open.feishu.cn',
@@ -273,6 +274,8 @@ export async function consumeCotEvents(
   const toolBrief = new Map<string, { name: string; input: unknown }>();
   const reasoningMessageId = `reasoning-${publisher.runId}`;
   const finalStepId = `step-process-${publisher.runId}`;
+  // Quick-reply blocks become buttons under the reply; keep them out of the bubble.
+  const visibleText = createQuickReplyFilter();
 
   try {
     for await (const evt of events) {
@@ -333,6 +336,8 @@ export async function consumeCotEvents(
         continue;
       }
       if (evt.type === 'text') {
+        const delta = visibleText(evt.delta);
+        if (!delta) continue;
         closeReasoningIfNeeded();
         if (!textStepOpen) {
           textStepOpen = true;
@@ -348,7 +353,7 @@ export async function consumeCotEvents(
         }
         publisher.enqueue('TEXT_MESSAGE_CONTENT', {
           messageId: textMessageId,
-          delta: truncateCot(evt.delta, COT_TEXT_MAX),
+          delta: truncateCot(delta, COT_TEXT_MAX),
         });
         continue;
       }

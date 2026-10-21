@@ -2,6 +2,7 @@ import { log } from '../core/logger';
 import {
   scheduleListCard,
   scheduleResultCard,
+  scheduleRunCard,
   type ScheduleCardEntry,
 } from '../card/templates';
 import type { Scheduler } from '../scheduler/scheduler';
@@ -72,6 +73,14 @@ export async function handleSchedule(args: string, ctx: CommandContext): Promise
       if (!id) return send(ctx, `Which one? \`/schedule ${sub} <id>\` — see \`/schedule list\`.`);
       const enabled = sub.toLowerCase() === 'resume';
       const updated = scheduler.setEnabled(ownerId, id, enabled);
+      // From the card posted when the task ran: redraw that card, not the list.
+      if (ctx.fromCardAction && rest[1] === 'run-card') {
+        if (!updated) return;
+        return answerCard(
+          ctx,
+          scheduleRunCard({ id: updated.id, label: updated.label, prompt: updated.prompt, paused: !enabled }),
+        );
+      }
       if (ctx.fromCardAction) return refreshListCard(ctx, scheduler);
       if (!updated) return send(ctx, notFound(id));
       return send(

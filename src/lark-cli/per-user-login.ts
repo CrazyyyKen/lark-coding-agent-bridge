@@ -270,7 +270,15 @@ export class PerUserLogins {
    * On someone's first DM: if they aren't signed in, send the welcome with a
    * sign-in link, once. Later reminders come from /login.
    */
-  async welcomeIfNew(openId: string, notify: Notify): Promise<void> {
+  /**
+   * `sendWelcome` posts the welcome with the new sign-in link (a card in the
+   * bridge); `notify` carries the later outcome notices.
+   */
+  async welcomeIfNew(
+    openId: string,
+    notify: Notify,
+    sendWelcome: (login: DeviceLogin) => Promise<void> = (login) => notify(welcomeMessage(login)),
+  ): Promise<void> {
     if (this.welcomed.has(openId)) return;
     this.welcomed.add(openId);
     const folders = this.folders(openId);
@@ -286,7 +294,7 @@ export class PerUserLogins {
     if ((await this.status(openId)).loggedIn) return;
     try {
       const login = await this.startLogin(openId, notify);
-      await notify(welcomeMessage(login));
+      await sendWelcome(login);
     } catch (err) {
       log.warn('per-user-login', 'welcome-failed', { user: openId.slice(-6), err: String(err) });
       await notify(
@@ -371,6 +379,11 @@ export class PerUserLogins {
       larkCliConfigDir: folders.larkCliConfigDir,
     };
   }
+}
+
+/** How many minutes a sign-in link stays valid. */
+export function loginLinkMinutes(login: DeviceLogin): number {
+  return Math.round((login.expiresIn ?? DEFAULT_LOGIN_LIFETIME_S) / 60);
 }
 
 export function welcomeMessage(login: DeviceLogin): string {

@@ -1,6 +1,9 @@
 interface ButtonSpec {
   text: string;
-  value: Record<string, unknown>;
+  /** Sent back to the bridge on click. Omit for a link button (`url`). */
+  value?: Record<string, unknown>;
+  /** Opens this link instead of calling back. */
+  url?: string;
   style?: 'primary' | 'danger' | 'default';
 }
 
@@ -9,7 +12,7 @@ function button(spec: ButtonSpec): object {
     tag: 'button',
     text: { tag: 'plain_text', content: spec.text },
     type: spec.style ?? 'default',
-    value: spec.value,
+    ...(spec.url ? { url: spec.url } : { value: spec.value ?? {} }),
   };
 }
 
@@ -223,6 +226,90 @@ export function helpCard(agentName = 'Agent', opts: { personalLogin?: boolean } 
       { text: '📂 Workspaces', value: { cmd: 'ws.list' } },
       { text: '🆕 New session', value: { cmd: 'new' } },
     ]),
+    actions([
+      { text: '📅 My scheduled tasks', value: { cmd: 'schedule.list' } },
+      ...(opts.personalLogin
+        ? [
+            { text: '🔑 Sign in', value: { cmd: 'login' } },
+            { text: '👤 Who am I', value: { cmd: 'whoami' } },
+          ]
+        : []),
+    ]),
+  ]);
+}
+
+// ─── Quick replies ───────────────────────────────────────────────────────────
+// Buttons carry {quick_reply:<offer id>, i:<option index>}; the card
+// dispatcher checks the clicker is the requester and sends the option as
+// their next message (see src/bot/quick-replies.ts).
+
+export function quickRepliesCard(offerId: string, options: string[]): object {
+  return {
+    config: { wide_screen_mode: true, update_multi: true },
+    elements: [
+      actions(
+        options.map((option, i) => ({
+          text: buttonLabel(option),
+          value: { quick_reply: offerId, i },
+          ...(i === 0 ? { style: 'primary' as const } : {}),
+        })),
+      ),
+      { tag: 'note', elements: [{ tag: 'plain_text', content: 'Tap to answer, or just type.' }] },
+    ],
+  };
+}
+
+/** The quick-reply card after a tap: what was chosen, no more buttons. */
+export function quickReplyChosenCard(text: string): object {
+  return {
+    config: { wide_screen_mode: true, update_multi: true },
+    elements: [divMd(`✔ ${escapeMd(text)}`)],
+  };
+}
+
+function buttonLabel(text: string): string {
+  return text.length > 40 ? `${text.slice(0, 39)}…` : text;
+}
+
+// ─── Personal sign-in (team bots) ────────────────────────────────────────────
+
+/** The sign-in link as a button; the raw link stays below for clients that need it. */
+export function signInCard(s: { url: string; minutes: number; welcome: boolean }): object {
+  const intro = s.welcome
+    ? "I'm the team assistant. To work with **your own** docs, calendar, mail and approvals, " +
+      'sign in once with your Lark account.'
+    : 'Sign in while using **your own** Lark account, then approve.';
+  return shell(s.welcome ? "👋 Hi! I'm the team assistant" : '🔑 Sign in to Lark', [
+    divMd(intro),
+    actions([{ text: 'Sign in with Lark', url: s.url, style: 'primary' }]),
+    divMd(
+      `The link works for ${s.minutes} minutes; I'll confirm here once you're signed in. ` +
+        (s.welcome ? 'Until then I can still help with general questions.' : ''),
+    ),
+    HR,
+    divMd(
+      "Your sign-in is only used for your own requests in this chat: other people using me can't reach " +
+        "your data, and you can't reach theirs.",
+    ),
+    { tag: 'note', elements: [{ tag: 'plain_text', content: `Button not working? Open: ${s.url}` }] },
+  ]);
+}
+
+/** `/whoami`, with the button that changes it. */
+export function whoamiCard(s: { signedIn: boolean; name?: string; permissions?: number }): object {
+  if (!s.signedIn) {
+    return shell('👤 Not signed in', [
+      divMd("I'm using the bot's own identity for you, so I can't reach your personal docs, calendar or mail."),
+      actions([{ text: '🔑 Sign in', value: { cmd: 'login' }, style: 'primary' }]),
+    ]);
+  }
+  const who = s.name ? ` as **${escapeMd(s.name)}**` : '';
+  return shell('👤 Signed in', [
+    divMd(
+      `You're signed in${who} (${s.permissions ?? 0} permissions granted). ` +
+        'I act as you only for your own requests in this chat.',
+    ),
+    actions([{ text: 'Sign out', value: { cmd: 'logout' }, style: 'danger' }]),
   ]);
 }
 
@@ -257,6 +344,28 @@ export function scheduleSuggestionCard(s: {
       { text: 'Not now', value: { cmd: 'schedule.dismiss', arg: s.proposalId } },
     ]),
     divMd('Only you can create it. Manage tasks any time with `/schedule list`.'),
+  ]);
+}
+
+/**
+ * Posted when a task starts (it anchors the run's reply), with Run again and
+ * Pause. `paused` is the same card after Pause was tapped.
+ */
+export function scheduleRunCard(s: { id: string; label: string; prompt: string; paused?: boolean }): object {
+  const ref = `${s.id} run-card`;
+  return shell(`⏰ Scheduled task · ${s.label}`, [
+    divMd(`\`${s.id}\`\n> ${escapeMd(s.prompt)}`),
+    actions(
+      s.paused
+        ? [{ text: '▶ Resume schedule', value: { cmd: 'schedule.resume', arg: ref }, style: 'primary' }]
+        : [
+            { text: '▶ Run again', value: { cmd: 'schedule.run', arg: s.id } },
+            { text: '⏸ Pause schedule', value: { cmd: 'schedule.pause', arg: ref } },
+          ],
+    ),
+    ...(s.paused
+      ? [{ tag: 'note', elements: [{ tag: 'plain_text', content: 'Paused: it won\'t run again until you resume it.' }] }]
+      : []),
   ]);
 }
 

@@ -14,6 +14,9 @@ import type { SessionStore } from '../session/store';
 import type { WorkspaceStore } from '../workspace/store';
 import { commandSessionCatalogIdentity } from '../bot/session-catalog-identity';
 import { lookupMessageThreadId } from '../bot/thread-id';
+import type { QuickReplies } from '../bot/quick-replies';
+import type { AccessDecision } from '../policy/access';
+import { quickReplyChosenCard } from './templates';
 
 /** Marker key on a button's value object that flags the cardAction as
  * a callback that should be forwarded back to the agent instead
@@ -40,6 +43,8 @@ export interface CardDispatchDeps {
   callbackAuth?: CallbackAuth;
   callbackPolicyFingerprint?: string;
   callbackPolicyFingerprintForScope?: (scope: string) => string | undefined;
+  /** Buttons the agent offered under a reply (src/bot/quick-replies.ts). */
+  quickReplies?: QuickReplies;
 }
 
 export async function handleCardAction(deps: CardDispatchDeps): Promise<void> {
@@ -82,6 +87,11 @@ export async function handleCardAction(deps: CardDispatchDeps): Promise<void> {
     return;
   }
 
+  if (typeof payload.quick_reply === 'string') {
+    await handleQuickReply(deps, payload, { scope, threadId, mode, access: accessDecision });
+    return;
+  }
+
   const cmd = typeof payload.cmd === 'string' ? payload.cmd : '';
   if (cmd) {
     if (isSignedBridgeCallback(payload) && !verifyBridgeToken(deps, payload, scope, cmd)) {
@@ -89,31 +99,9 @@ export async function handleCardAction(deps: CardDispatchDeps): Promise<void> {
     }
     log.info('cardAction', 'cmd', { cmd, scope });
     const msg = makeFakeMsg(deps.evt, threadId);
-
-    const ctx: CommandContext = {
-      channel: deps.channel,
-      msg,
-      scope,
-      chatMode: mode,
-      sessions: deps.sessions,
-      sessionCatalog: deps.sessionCatalog,
-      sessionCatalogIdentity: await commandSessionCatalogIdentity({
-        msg,
-        scope,
-        mode,
-        workspaces: deps.workspaces,
-        controls: deps.controls,
-        access: accessDecision,
-      }),
-      workspaces: deps.workspaces,
-      activeRuns: deps.activeRuns,
-      agent: deps.agent,
-      processPool: deps.processPool,
-      runExecutor: deps.runExecutor,
-      controls: deps.controls,
-      formValue,
-      fromCardAction: true,
-    };
+    const ctx = await commandContext(deps, msg, { scope, mode, access: accessDecision });
+    ctx.formValue = formValue;
+    ctx.fromCardAction = true;
 
     const [name, ...rest] = cmd.split('.');
     const sub = rest.join(' ');
@@ -139,6 +127,90 @@ export async function handleCardAction(deps: CardDispatchDeps): Promise<void> {
   }
 
   return;
+}
+
+interface ClickScope {
+  scope: string;
+  threadId?: string | undefined;
+  mode: 'p2p' | 'group' | 'topic';
+  access: AccessDecision;
+}
+
+async function commandContext(
+  deps: CardDispatchDeps,
+  msg: NormalizedMessage,
+  click: Omit<ClickScope, 'threadId'>,
+): Promise<CommandContext> {
+  return {
+    channel: deps.channel,
+    msg,
+    scope: click.scope,
+    chatMode: click.mode,
+    sessions: deps.sessions,
+    sessionCatalog: deps.sessionCatalog,
+    sessionCatalogIdentity: await commandSessionCatalogIdentity({
+      msg,
+      scope: click.scope,
+      mode: click.mode,
+      workspaces: deps.workspaces,
+      controls: deps.controls,
+      access: click.access,
+    }),
+    workspaces: deps.workspaces,
+    activeRuns: deps.activeRuns,
+    agent: deps.agent,
+    processPool: deps.processPool,
+    runExecutor: deps.runExecutor,
+    controls: deps.controls,
+  };
+}
+
+/**
+ * A tap on a quick-reply button: counts as the requester sending that line.
+ * Anyone else's tap is ignored (in a group everyone sees the buttons). The
+ * card then shows the choice, so it can't be answered twice.
+ */
+async function handleQuickReply(
+  deps: CardDispatchDeps,
+  payload: Record<string, unknown>,
+  click: ClickScope,
+): Promise<void> {
+  const operator = deps.evt.operator;
+  const index = typeof payload.i === 'number' ? payload.i : Number(payload.i);
+  const taken = deps.quickReplies?.take(String(payload.quick_reply), index, operator.openId);
+  if (!taken?.ok) {
+    const reason = taken?.reason ?? 'expired';
+    log.info('quickReply', 'skip', { scope: click.scope, reason, operator: operator.openId.slice(-6) });
+    if (reason === 'expired') {
+      await deps.channel
+        .send(
+          deps.evt.chatId,
+          { markdown: 'Those buttons have expired — just type your answer.' },
+          { replyTo: deps.evt.messageId },
+        )
+        .catch((err) => log.warn('quickReply', 'expired-notice-failed', { err: String(err) }));
+    }
+    return;
+  }
+  const option = taken.option;
+  log.info('quickReply', 'chosen', { scope: click.scope, index });
+  await deps.channel
+    .updateCard(deps.evt.messageId, quickReplyChosenCard(option))
+    .catch((err) => log.warn('quickReply', 'card-update-failed', { err: String(err) }));
+
+  const msg: NormalizedMessage = {
+    ...makeFakeMsg(deps.evt, click.threadId),
+    chatType: click.mode === 'p2p' ? 'p2p' : 'group',
+    content: option,
+    rawContentType: 'text',
+  };
+  // "/schedule list", "/login"…: run it like the typed command.
+  if (option.startsWith('/')) {
+    const [name = '', ...args] = option.slice(1).split(/\s+/);
+    const ctx = await commandContext(deps, msg, click);
+    if (await runCommandHandler(name, args.join(' '), ctx)) return;
+  }
+  deps.pending.push(click.scope, msg);
 }
 
 async function resolveScope(

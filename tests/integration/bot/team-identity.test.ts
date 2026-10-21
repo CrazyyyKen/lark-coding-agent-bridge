@@ -85,10 +85,12 @@ describe('team sign-in commands', () => {
     expect(lastMarkdown(h.channel)).toMatch(/private chat/);
   });
 
-  it('reports a member who has not signed in', async () => {
+  it('reports a member who has not signed in, with a Sign in button', async () => {
     const h = await harness({ logins: true });
     await tryHandleCommand(h.ctx('ou_alice0001', '/whoami'));
-    expect(lastMarkdown(h.channel)).toMatch(/not signed in/);
+    const card = JSON.stringify((h.channel.sent.at(-1)?.content as { card?: unknown }).card);
+    expect(card).toContain('Not signed in');
+    expect(card).toContain('"value":{"cmd":"login"}');
   });
 
   it("keeps a team bot's shared session list away from non-admins", async () => {

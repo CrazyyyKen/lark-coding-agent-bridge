@@ -44,6 +44,8 @@ interface FakeLarkChannel {
   };
   sent: SentMessage[];
   updated: Array<{ messageId: string; card: unknown }>;
+  /** Text the reply stream showed, update by update. */
+  streamed: string[];
   [key: string]: unknown;
 }
 
@@ -65,9 +67,15 @@ describe('scheduled tasks through the bridge', () => {
     await startTestBridge(h);
 
     await waitFor(() => h.agent.runOptions.length === 1);
-    const header = h.channel.sent.find((m) => m.content.markdown?.startsWith('⏰ **Scheduled task**'));
+    const header = h.channel.sent.find((m) => JSON.stringify(m.content.card ?? '').includes('⏰ Scheduled task'));
     expect(header?.chatId).toBe('oc_dm');
-    expect(header?.content.markdown).toContain('Triage my unread inbox');
+    const headerCard = JSON.stringify(header?.content.card);
+    expect(headerCard).toContain('Triage my unread inbox');
+    expect(findButtonValue(header?.content.card, '▶ Run again')).toEqual({ cmd: 'schedule.run', arg: 's1ab' });
+    expect(findButtonValue(header?.content.card, '⏸ Pause schedule')).toEqual({
+      cmd: 'schedule.pause',
+      arg: 's1ab run-card',
+    });
 
     const prompt = h.agent.runOptions[0]?.prompt ?? '';
     expect(prompt).toContain('[Scheduled task s1ab · weekdays 08:30');
@@ -188,9 +196,91 @@ describe('scheduled tasks through the bridge', () => {
   });
 });
 
+describe('quick replies and run-card buttons', () => {
+  const draftReply = [
+    'Draft to Kenny: "Hi Kenny, please see the attached request."',
+    '```quick-replies',
+    'Send it',
+    'Cancel',
+    '/schedule list',
+    '```',
+  ].join('\n');
+
+  it('shows the options as buttons, not text, and only the requester can answer', async () => {
+    const h = await createHarness({
+      team: true,
+      agentEvents: [
+        { type: 'text', delta: draftReply },
+        { type: 'done', terminationReason: 'normal' },
+      ],
+    });
+    await startTestBridge(h);
+
+    await h.channel.handlers.message?.(dm('Draft a reply to Kenny'));
+    const buttonsCard = await waitForSent(h, (m) => JSON.stringify(m.content.card ?? '').includes('quick_reply'));
+    const shown = [...h.channel.streamed, ...h.channel.sent.map((m) => m.content.markdown ?? '')].join('\n');
+    expect(shown).toContain('Draft to Kenny');
+    expect(shown).not.toContain('quick-replies');
+    expect(shown).not.toContain('Send it');
+    const send = findButtonValue(buttonsCard.content.card, 'Send it')!;
+    expect(send).toMatchObject({ i: 0 });
+
+    // Not the requester (a team bot lets them past the access check): nothing happens.
+    await h.channel.handlers.cardAction?.(click('ou_other', 'om_buttons', send));
+    expect(h.agent.runOptions).toHaveLength(1);
+    expect(h.channel.updated.find((u) => u.messageId === 'om_buttons')).toBeUndefined();
+
+    await h.channel.handlers.cardAction?.(click('ou_user', 'om_buttons', send));
+    await waitFor(() => h.agent.runOptions.length === 2);
+    expect(h.agent.runOptions[1]?.prompt).toContain('Send it');
+    expect(JSON.stringify(h.channel.updated.find((u) => u.messageId === 'om_buttons')?.card)).toContain('✔ Send it');
+
+    // Answered already: a second tap only says so.
+    await h.channel.handlers.cardAction?.(click('ou_user', 'om_buttons', send));
+    await waitForSent(h, (m) => (m.content.markdown ?? '').includes('expired'));
+    expect(h.agent.runOptions).toHaveLength(2);
+  });
+
+  it('runs a /command option as the command instead of sending it to the agent', async () => {
+    const h = await createHarness({
+      agentEvents: [
+        { type: 'text', delta: draftReply },
+        { type: 'done', terminationReason: 'normal' },
+      ],
+    });
+    await startTestBridge(h);
+
+    await h.channel.handlers.message?.(dm('Draft a reply to Kenny'));
+    const buttonsCard = await waitForSent(h, (m) => JSON.stringify(m.content.card ?? '').includes('quick_reply'));
+    const list = findButtonValue(buttonsCard.content.card, '/schedule list')!;
+
+    await h.channel.handlers.cardAction?.(click('ou_user', 'om_buttons', list));
+    await waitForSent(h, (m) => JSON.stringify(m.content.card ?? '').includes('Your scheduled tasks'));
+    expect(h.agent.runOptions).toHaveLength(1);
+  });
+
+  it('pauses a schedule from the card posted when it ran, and resumes it there', async () => {
+    const h = await createHarness();
+    await writeSchedules(h.tmp, [schedule({ nextRunAt: Date.now() - 1000 })]);
+    await startTestBridge(h);
+
+    const runCard = await waitForSent(h, (m) => JSON.stringify(m.content.card ?? '').includes('⏰ Scheduled task'));
+    const pause = findButtonValue(runCard.content.card, '⏸ Pause schedule')!;
+    await h.channel.handlers.cardAction?.(click('ou_user', 'om_run', pause));
+    await waitFor(async () => (await readSchedules(h.tmp))[0]?.enabled === false);
+    const paused = h.channel.updated.find((u) => u.messageId === 'om_run')?.card;
+    const resume = findButtonValue(paused, '▶ Resume schedule')!;
+
+    await h.channel.handlers.cardAction?.(click('ou_user', 'om_run', resume));
+    await waitFor(async () => (await readSchedules(h.tmp))[0]?.enabled === true);
+  });
+});
+
 async function createHarness(
   opts: {
     chatMode?: 'p2p' | 'group';
+    /** Team mode: anyone may use the bot, so only the requester checks stop others. */
+    team?: boolean;
     agentEvents?: NonNullable<ConstructorParameters<typeof FakeAgentAdapter>[0]>['events'];
   } = {},
 ) {
@@ -201,7 +291,11 @@ async function createHarness(
     accounts: { app: { id: 'cli_test', secret: 'secret', tenant: 'feishu' } },
     access: { allowedChats: ['oc_group'], allowedUsers: ['ou_user'] },
   });
-  const profileConfig = { ...base, workspaces: { ...base.workspaces, default: workspace } };
+  const profileConfig = {
+    ...base,
+    ...(opts.team ? { mode: 'team' as const } : {}),
+    workspaces: { ...base.workspaces, default: workspace },
+  };
   const sessions = new SessionStore(join(tmp.profile, 'sessions.json'));
   const workspaces = new WorkspaceStore(join(tmp.profile, 'workspaces.json'));
   const agent = new FakeAgentAdapter({
@@ -248,10 +342,12 @@ function createFakeLarkChannel(chatMode: 'p2p' | 'group'): FakeLarkChannel {
   const handlers: FakeLarkChannel['handlers'] = {};
   const sent: SentMessage[] = [];
   const updated: FakeLarkChannel['updated'] = [];
+  const streamed: string[] = [];
   return {
     handlers,
     sent,
     updated,
+    streamed,
     botIdentity: { openId: 'ou_bot', name: 'Bridge' },
     rawClient: {
       request: vi.fn(async () => ({ data: { items: [] } })),
@@ -292,7 +388,13 @@ function createFakeLarkChannel(chatMode: 'p2p' | 'group'): FakeLarkChannel {
     },
     async stream(_chatId: string, input: unknown) {
       const producer = (input as { markdown?: unknown }).markdown;
-      if (typeof producer === 'function') await producer({ setContent: async () => {} });
+      if (typeof producer === 'function') {
+        await producer({
+          setContent: async (markdown: string) => {
+            streamed.push(markdown);
+          },
+        });
+      }
     },
   };
 }

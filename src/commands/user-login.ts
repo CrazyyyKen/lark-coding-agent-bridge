@@ -1,5 +1,6 @@
 import { log } from '../core/logger';
-import { loginLinkMessage, type PerUserLogins } from '../lark-cli/per-user-login';
+import { signInCard, whoamiCard } from '../card/templates';
+import { loginLinkMinutes, type PerUserLogins } from '../lark-cli/per-user-login';
 import type { CommandContext } from './index';
 
 /**
@@ -29,7 +30,10 @@ export async function handleLogin(_args: string, ctx: CommandContext): Promise<v
   }
   try {
     const login = await logins.startLogin(openId, (markdown) => notifyDm(ctx, markdown));
-    await send(ctx, loginLinkMessage(login));
+    await sendCard(
+      ctx,
+      signInCard({ url: login.verificationUrl, minutes: loginLinkMinutes(login), welcome: false }),
+    );
   } catch (err) {
     log.warn('per-user-login', 'login-start-failed', { user: openId.slice(-6), err: String(err) });
     await send(ctx, "Sorry — I couldn't start the sign-in. Please try again in a minute.");
@@ -54,15 +58,14 @@ export async function handleWhoami(_args: string, ctx: CommandContext): Promise<
   if (!logins) return send(ctx, NOT_ENABLED);
   if (ctx.chatMode !== 'p2p') return send(ctx, DM_ONLY);
   const status = await logins.status(ctx.msg.senderId, true);
-  if (!status.loggedIn) {
-    await send(ctx, "You're not signed in, so I'm using the bot's own identity. Send `/login` to sign in.");
-    return;
-  }
   const name = status.userName?.trim();
-  await send(
+  await sendCard(
     ctx,
-    `You're signed in${name ? ` as **${name}**` : ''} (${status.scopes.length} permissions granted). ` +
-      'I act as you only for your own requests in this chat. Send `/logout` to remove it.',
+    whoamiCard({
+      signedIn: status.loggedIn,
+      ...(name ? { name } : {}),
+      permissions: status.scopes.length,
+    }),
   );
 }
 
@@ -75,6 +78,14 @@ async function send(ctx: CommandContext, markdown: string): Promise<void> {
     await ctx.channel.send(ctx.msg.chatId, { markdown }, { replyTo: ctx.msg.messageId });
   } catch (err) {
     log.fail('command', err, { step: 'user-login-reply' });
+  }
+}
+
+async function sendCard(ctx: CommandContext, card: object): Promise<void> {
+  try {
+    await ctx.channel.send(ctx.msg.chatId, { card }, { replyTo: ctx.msg.messageId });
+  } catch (err) {
+    log.fail('command', err, { step: 'user-login-card' });
   }
 }
 

@@ -42,6 +42,7 @@ import { perUserLoginEnabled } from '../config/profile-schema';
 import { resolveAppSecret } from '../config/secret-resolver';
 import { log, reportMetric, withTrace } from '../core/logger';
 import {
+  loginLinkMinutes,
   PerUserLogins,
   sharedBotIdentity,
   type PersonRun,
@@ -65,7 +66,14 @@ import {
   isValidTimeZone,
   parseScheduleArgs,
 } from '../scheduler/spec';
-import { scheduleMissedCard, scheduleSuggestionCard } from '../card/templates';
+import {
+  quickRepliesCard,
+  scheduleMissedCard,
+  scheduleRunCard,
+  scheduleSuggestionCard,
+  signInCard,
+} from '../card/templates';
+import { findQuickReplies, QuickReplies, stripQuickReplies } from './quick-replies';
 import { ScheduleStore, type Schedule } from '../scheduler/store';
 import type { SessionCatalog } from '../session/catalog';
 import type { SessionStore } from '../session/store';
@@ -270,6 +278,8 @@ export async function startChannel(deps: StartChannelDeps): Promise<BridgeChanne
   // switch can inject a one-time "model changed" note into the next (resumed)
   // prompt. In-memory only: on restart the first run re-seeds silently.
   const lastRunModelByScope = new Map<string, string>();
+  // Buttons the agent offered at the end of a reply (src/bot/quick-replies.ts).
+  const quickReplies = new QuickReplies();
   const cotClient = new CotClient({
     tenant: cfg.accounts.app.tenant,
     appId: cfg.accounts.app.id,
@@ -388,6 +398,7 @@ export async function startChannel(deps: StartChannelDeps): Promise<BridgeChanne
           callbackAuth,
           activePolicyFingerprints,
           lastRunModelByScope,
+          quickReplies,
           scope,
           mode,
         });
@@ -443,6 +454,7 @@ export async function startChannel(deps: StartChannelDeps): Promise<BridgeChanne
           chatModeCache,
           callbackAuth,
           callbackPolicyFingerprintForScope: (scope) => activePolicyFingerprints.get(scope),
+          quickReplies,
         });
       }).catch((err) => log.fail('cardAction', err));
     },
@@ -683,7 +695,7 @@ async function fireScheduledTask(
   // A real message to anchor the run on: replies, reactions and the progress
   // bubble all hang off a message id, and the owner sees what started it.
   const posted = await channel.send(schedule.chatId, {
-    markdown: `⏰ **Scheduled task** \`${schedule.id}\` · ${schedule.label}\n> ${schedule.prompt}`,
+    card: scheduleRunCard({ id: schedule.id, label: schedule.label, prompt: schedule.prompt }),
   });
   const msg: NormalizedMessage = {
     messageId: posted.messageId,
@@ -724,9 +736,9 @@ async function collectReplyText(events: AsyncIterable<AgentEvent>): Promise<stri
 async function offerScheduleSuggestions(
   channel: LarkChannel,
   scheduler: Scheduler,
-  input: { chatId: string; ownerId: string; ownerName?: string; text: Promise<string> },
+  input: { chatId: string; ownerId: string; ownerName?: string; text: string },
 ): Promise<void> {
-  const suggestions = findScheduleSuggestions(await input.text);
+  const suggestions = findScheduleSuggestions(input.text);
   for (const args of suggestions) {
     const parsed = parseScheduleArgs(args);
     if ('error' in parsed) {
@@ -1011,9 +1023,17 @@ async function intakeMessage(deps: IntakeDeps): Promise<void> {
   const logins = controls.teamLogin?.logins;
   if (logins && msg.chatType === 'p2p') {
     void logins
-      .welcomeIfNew(msg.senderId, async (markdown) => {
-        await channel.send(msg.chatId, { markdown });
-      })
+      .welcomeIfNew(
+        msg.senderId,
+        async (markdown) => {
+          await channel.send(msg.chatId, { markdown });
+        },
+        async (login) => {
+          await channel.send(msg.chatId, {
+            card: signInCard({ url: login.verificationUrl, minutes: loginLinkMinutes(login), welcome: true }),
+          });
+        },
+      )
       .catch((err) => log.warn('per-user-login', 'welcome-error', { err: String(err) }));
   }
 
@@ -1036,6 +1056,7 @@ interface RunBatchDeps {
   callbackAuth?: CallbackAuth;
   activePolicyFingerprints: Map<string, string>;
   lastRunModelByScope: Map<string, string>;
+  quickReplies: QuickReplies;
   scope: string;
   mode: ChatMode;
 }
@@ -1055,6 +1076,7 @@ async function runAgentBatch(deps: RunBatchDeps): Promise<void> {
     callbackAuth,
     activePolicyFingerprints,
     lastRunModelByScope,
+    quickReplies,
     scope,
     mode,
   } = deps;
@@ -1258,10 +1280,9 @@ async function runAgentBatch(deps: RunBatchDeps): Promise<void> {
   activePolicyFingerprints.set(scope, flow.policy.policyFingerprint);
   const handle = execution.handle;
   const eventStream = execution.subscribe();
-  // `/schedule add …` lines in a DM reply become one-tap "Create schedule"
-  // cards for the person who asked (offered once the reply is out, below).
-  const replyText =
-    controls.scheduler && firstMsg.chatType === 'p2p' ? collectReplyText(execution.subscribe()) : undefined;
+  // The finished reply's text, for the buttons offered once the reply is out
+  // (below): quick replies, and "Create schedule" cards in a DM.
+  const replyText = collectReplyText(execution.subscribe());
   if (flow.resumeFrom) {
     log.info('session', 'resume', { sessionId: flow.resumeFrom, cwd });
   } else {
@@ -1314,9 +1335,12 @@ async function runAgentBatch(deps: RunBatchDeps): Promise<void> {
 
   // Re-read prefs on every flush so toggling /config mid-stream takes
   // effect immediately. Cheap object lookups, no allocation when on.
+  // Every renderer goes through here, so this is also where quick-reply
+  // blocks are hidden: they become buttons, not text.
   const filterForPrefs = (state: RunState): RunState => {
-    if (getShowToolCalls(controls.cfg)) return state;
-    return { ...state, blocks: state.blocks.filter((b) => b.kind !== 'tool') };
+    const shown = withoutQuickReplies(state);
+    if (getShowToolCalls(controls.cfg)) return shown;
+    return { ...shown, blocks: shown.blocks.filter((b) => b.kind !== 'tool') };
   };
   const cardRenderOptions = callbackAuth
     ? {
@@ -1554,15 +1578,68 @@ async function runAgentBatch(deps: RunBatchDeps): Promise<void> {
   } finally {
     activePolicyFingerprints.delete(scope);
     scheduleWorkingReactionCleanup(channel, lastMsg.messageId, reactionPromise);
-    if (replyText && controls.scheduler) {
-      void offerScheduleSuggestions(channel, controls.scheduler, {
-        chatId,
-        ownerId: firstMsg.senderId,
-        ...(firstMsg.senderName ? { ownerName: firstMsg.senderName } : {}),
-        text: replyText,
-      }).catch((err) => log.warn('scheduler', 'suggestion-failed', { err: String(err) }));
-    }
+    void offerReplyButtons({
+      channel,
+      chatId,
+      threadId: mode === 'topic' ? threadId : undefined,
+      dm: firstMsg.chatType === 'p2p',
+      requester: lastMsg,
+      text: replyText,
+      quickReplies,
+      scheduler: controls.scheduler,
+    }).catch((err) => log.warn('reply-buttons', 'offer-failed', { err: String(err) }));
   }
+}
+
+/**
+ * Buttons under a finished reply, for the person whose message it answers:
+ * "Create schedule" cards for `/schedule add` lines (DMs), then the agent's
+ * quick replies. Nothing happens until that person taps.
+ */
+async function offerReplyButtons(input: {
+  channel: LarkChannel;
+  chatId: string;
+  threadId: string | undefined;
+  dm: boolean;
+  requester: NormalizedMessage;
+  text: Promise<string>;
+  quickReplies: QuickReplies;
+  scheduler: Scheduler | undefined;
+}): Promise<void> {
+  const text = await input.text;
+  if (!text) return;
+  if (input.dm && input.scheduler) {
+    await offerScheduleSuggestions(input.channel, input.scheduler, {
+      chatId: input.chatId,
+      ownerId: input.requester.senderId,
+      ...(input.requester.senderName ? { ownerName: input.requester.senderName } : {}),
+      text,
+    }).catch((err) => log.warn('scheduler', 'suggestion-failed', { err: String(err) }));
+  }
+  const options = findQuickReplies(text);
+  if (options.length === 0) return;
+  const offer = input.quickReplies.offer({
+    requesterId: input.requester.senderId,
+    chatId: input.chatId,
+    options,
+  });
+  await input.channel.send(
+    input.chatId,
+    { card: quickRepliesCard(offer.id, options) },
+    // In a topic, keep the buttons in the topic.
+    input.threadId ? { replyTo: input.requester.messageId, replyInThread: true } : undefined,
+  );
+}
+
+/** The run state as shown to people: quick-reply blocks become buttons instead. */
+function withoutQuickReplies(state: RunState): RunState {
+  return {
+    ...state,
+    blocks: state.blocks.map((b) =>
+      b.kind === 'text' ? { ...b, content: stripQuickReplies(b.content) } : b,
+    ),
+    ...(state.finalText !== undefined ? { finalText: stripQuickReplies(state.finalText) } : {}),
+  };
 }
 
 interface LazyProgressStream {
