@@ -1,4 +1,4 @@
-# Test plan: per-person sign-in, scheduled tasks, personal-bot access, models, English chat, deploy
+# Test plan: per-person sign-in, scheduled tasks, buttons, personal-bot access, models, English chat, deploy
 
 Branches `feat/scheduler` (it contains `feat/per-user-login`) and `feat/models-and-chat-commands` (new models, English chat text, Sonnet 5.5 default for new bots), merged before the deploy. Tick each row as you go and note anything odd in the last column.
 
@@ -25,7 +25,7 @@ Automated tests already cover the logic: parsing, the requester-only and single-
 
 | Rows | Who |
 |---|---|
-| 2.14, 3.9 | Wei Leong: the real weekday 08:30 triage (set it up from the card), drafts only, nothing on Sat/Sun |
+| 2.14, 3.9 | Wei Leong: the real weekday 08:30 triage, now bridge schedule `see57` (since 2026-10-22, replacing a background loop that died at the 17:07 restart): drafts only, nothing on Sat/Sun |
 | 8.6, 2.10, 2.16c | Any team bot, in a group or with two accounts: someone else's tap does nothing |
 
 **Unblocked since (per-person sign-in turned on for `gdex-ai` at 17:21; `joeee` and `ken` set to full access):**
@@ -35,7 +35,7 @@ Automated tests already cover the logic: parsing, the requester-only and single-
 | 1.1–1.28, 8.11–8.15, 2.20–2.22 | `gdex-ai`, with two member accounts (A and B). Everyone who has DMed it before also gets the sign-in card on their next DM. |
 | 3.4, 3.5 | `joeee` and `ken`: memory and multi-step commands |
 
-**After the next deploy (branch `feat/config-quick-replies`):** 8.20–8.22 (the button limit in `/config`).
+**On `joeee` since 2026-10-21 19:47** (image `d6b2c995637d` from `main` @ `67a656e`; rollback image `lark-bot:pre-config-qr`): 8.20–8.22 (the button limit in `/config`). `weileong`, `ken` and `gdex-ai` move to this image once these pass on `joeee`.
 
 ## 0. Before you start
 
@@ -215,7 +215,7 @@ All bot-written chat text, cards and buttons are now English. The agent replies 
 
 ## 7. Deploy and restart (users should notice nothing)
 
-The image will build from this repo instead of npm. Rebuilding and restarting keeps each bot's data volume: Claude sign-in, the Lark app secret (encrypted with a key tied to the fixed hostname), personal sign-ins, sessions and scheduled tasks. Deploy Wei Leong's bot first; roll out to the others only after its rows pass.
+The image will build from this repo instead of npm. Rebuilding and restarting keeps each bot's data volume: Claude sign-in, the Lark app secret (encrypted with a key tied to the fixed hostname), personal sign-ins, sessions and scheduled tasks. Deploy `joeee` (the test bot) first; roll out to the others only after its rows pass.
 
 | # | Do | Expect | ✓ / notes |
 |---|---|---|---|
