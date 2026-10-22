@@ -9,6 +9,7 @@ Each Lark message starts a fresh `claude -p` run that exits after the reply. Not
 | What the agent might try | Why it fails here |
 |---|---|
 | Claude Code `CronCreate` | Lives only while that run's process lives (seconds). The bridge now passes `--disallowedTools CronCreate,CronDelete,CronList`. |
+| A background loop (`setsid nohup script.sh &` that sleeps until 08:30) | Survives the run, but not a container restart, and every bridge update recreates the container. Wei Leong's bot did this on 2026-10-21 at 16:01, and the 17:07 roll-out killed it before its first run. The prompt names this one explicitly. |
 | `crontab`, systemd timers | Not in the container (read-only filesystem, no cron daemon). On a laptop or dedicated host, a cron job running `claude` skips the bridge: no per-person login, no access check, and the reply has to be sent by hand. |
 | Windows Task Scheduler | Works only on that laptop, with full access, and only for fixed messages unless it starts `claude` outside the bridge. |
 | Cloud routine (`/schedule` skill, `RemoteTrigger`) | Runs on Anthropic's servers with no `lark-cli` login. |

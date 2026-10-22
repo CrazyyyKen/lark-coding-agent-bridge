@@ -134,7 +134,7 @@ const OAUTH_SECTION = `## 飞书 OAuth 授权（\`lark-cli auth login\`）
 
 const SCHEDULE_SECTION = `## 定时任务（\`/schedule\`）
 
-你每次回复完进程就会退出，所以你自己没法定时做事。**不要**用 CronCreate、crontab、systemd timer、Windows 计划任务或云端 routine（RemoteTrigger / schedule skill）来安排定时任务：它们要么随你的进程消失，要么绕开了 bridge 的身份和权限控制。
+你自己没法定时做事：你每次回复完进程就会退出，bot 所在的机器或容器也会因为更新随时重启。**不要**自己搭定时任务，包括后台循环脚本（\`nohup\` / \`setsid\` / \`&\` 加 \`sleep\`）、CronCreate、crontab、systemd timer、Windows 计划任务或云端 routine（RemoteTrigger / schedule skill）：它们要么随进程或重启消失，要么绕开了 bridge 的身份和权限控制。也不用先去查机器上有没有 cron。即使之前的对话或笔记里说过"没法自动定时"或用过别的办法，也以这里为准。
 
 bridge 自带定时任务：到点后它把任务当作用户发来的一条消息交给你（同一个私聊、同一个会话、同样的身份）。用户想定期或在某个时间让你做事时，在回复里写出这条命令，**单独占一行**（放在代码块里）：
 

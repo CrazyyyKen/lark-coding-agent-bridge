@@ -132,7 +132,7 @@ Use the **personal test bot** unless a row says team. For quick tests, make a `o
 | 2.13 | `/schedule run <id>` | Runs now; `/schedule list` shows the same next run as before. | |
 | 2.14 | Daily triage task running for real (Wei Leong) | Mon–Fri 08:30 only. Nothing on Sat/Sun. Drafts created, **nothing sent**. | |
 | 2.15 | Send a message while a scheduled run is working | It waits and is answered after the scheduled run, not lost. | |
-| 2.16 | Ask the bot "Every weekday at 8:30 summarize my inbox" (no command) | Replies with a `/schedule add weekdays 08:30 …` line, then a **📅 Create this scheduled task?** card appears below. Nothing is created yet. Does **not** try crontab, CronCreate or cloud routines. | |
+| 2.16 | Ask the bot "Every weekday at 8:30 summarize my inbox" (no command) | Replies with a `/schedule add weekdays 08:30 …` line, then a **📅 Create this scheduled task?** card appears below. Nothing is created yet. Does **not** try crontab, CronCreate, cloud routines or a background `nohup`/`setsid` loop, and doesn't go looking for cron first. | |
 | 2.16a | Tap **Create schedule** (on mobile too) | Card turns into "✅ Scheduled `sXXXX`"; `/schedule list` shows it. Tap again: no duplicate. | |
 | 2.16b | Ask again, tap **Not now** | Card says nothing was scheduled. | |
 | 2.16c | Team bot: B forwards or screenshots A's card and taps it | Nothing created for B (only the requester can confirm). | |
