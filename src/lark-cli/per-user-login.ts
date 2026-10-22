@@ -335,12 +335,15 @@ export class PerUserLogins {
     const result = await completeDeviceLogin(this.ctx(folders), login.deviceCode, this.exec, waitMs);
     if (this.pending.get(openId)?.login.deviceCode === login.deviceCode) this.pending.delete(openId);
     this.statusCache.delete(openId);
-    if (!result.ok) {
+    const status = await getUserAuthStatus(this.ctx(folders), this.exec);
+    // lark-cli can exit non-zero after storing the token (seen: "poll parse error"
+    // warnings, then "token response received"), so the stored sign-in decides.
+    if (!result.ok && !status.loggedIn) {
       // Usually the link expired unused; /login gives a new one.
       log.info('per-user-login', 'not-completed', { user: openId.slice(-6), reason: result.message });
       return;
     }
-    const status = await getUserAuthStatus(this.ctx(folders), this.exec);
+    if (!result.ok) log.warn('per-user-login', 'signed-in-despite-error', { user: openId.slice(-6), reason: result.message });
     const approvedBy = status.openId ?? (await storedUserOpenId(folders));
     if (approvedBy !== openId) {
       // Someone else opened the link (it was forwarded, or opened while

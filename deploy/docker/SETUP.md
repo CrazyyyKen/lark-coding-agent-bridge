@@ -90,8 +90,9 @@ Two ways for bots to use Claude:
 |---|---|---|
 | **Sign in per bot** | Skip this step. `add` opens Claude Code for each new bot and you sign in there | One or two bots |
 | **Sign in once for all bots** | Get a token with `claude setup-token` on your laptop (where Claude Code is installed), then run `./lark-bots.sh set-claude` on the server, choose 1 and paste it | Several bots |
+| **One credential per Claude account** | `./lark-bots.sh claude-account set ai@gdexpress.com` and paste that account's token; then `add <name> --claude-account ai@gdexpress.com`, or `use-claude <name> ai@gdexpress.com` for an existing bot | Bots on different accounts; what the provisioner uses ([README](README.md#claude-accounts)) |
 
-The token is saved in `~/lark-bots/claude.env` (mode 600). Treat it like a password: it gives full use of the Claude account.
+The token is saved in `~/lark-bots/claude.env` (or `claude-accounts/<id>.env`, mode 600). Treat it like a password: it gives full use of the Claude account.
 
 ## 5. Add a bot
 
@@ -211,8 +212,9 @@ There's no owner login to connect: `add` skips that step for team bots, and `aut
 A department bot serves many people, so don't let it share Claude usage with every other bot or ride on someone's personal sign-in. Both ways below work; you can switch any time.
 
 ```bash
-./lark-bots.sh set-claude hr-agent    # choose 1 (subscription token) or 2 (API key)
-./lark-bots.sh restart hr-agent
+./lark-bots.sh claude-account set hr-seat@gdexpress.com     # 1: the seat's token from claude setup-token
+./lark-bots.sh claude-account set hr-agent-key --api-key    # or 2: an API key
+./lark-bots.sh use-claude hr-agent hr-seat@gdexpress.com    # assign it (restarts the bot)
 ```
 
 | | **1. Subscription seat set aside for the bot** | **2. API key** |
@@ -293,7 +295,7 @@ Claude Code is only inside the containers, so `claude` on the server itself says
 **Which account a bot uses**
 
 ```bash
-ls claude.env bots/<name>.claude.env 2>/dev/null   # listed: shared credential; nothing: the bot's own sign-in
+./lark-bots.sh status <name>    # "Claude:" line: account <id>, its own credential file, the shared one, or its own /login
 docker compose -f bot.yaml --env-file bots/<name>.env run --rm bot claude
 # then /status, then /exit
 ```
@@ -307,6 +309,9 @@ docker compose -f bot.yaml --env-file bots/<name>.env run --rm bot claude
 | One bot different from the shared one (subscription token or API key) | `./lark-bots.sh set-claude <name>`, choose 1 or 2, then `./lark-bots.sh restart <name>`. It writes `bots/<name>.claude.env`, which wins over the shared one |
 | One bot back to its own sign-in while a shared credential exists | `./lark-bots.sh set-claude <name>`, choose 3, then restart it |
 | Everything back to each bot's own sign-in | Delete `claude.env` and every `bots/*.claude.env`, then `./lark-bots.sh restart all` |
+| One bot onto a saved Claude account | `./lark-bots.sh use-claude <name> <id>` (restarts it; removes the bot's own `bots/<name>.claude.env`). Back to the shared one: `use-claude <name> shared` |
+| A new token for an account (for example a year later) | `./lark-bots.sh claude-account set <id> --restart`: every bot on that account gets it |
+| See every account and its bots | `./lark-bots.sh claude-account list` |
 
 `set-claude <name>` needs the current image (its entrypoint keeps only the credential the bot is meant to use): run `./lark-bots.sh update` once after updating these files. Older per-bot files written by hand still work, except a hand-written subscription token can't override a shared **API key**. Rewrite such files with `set-claude <name>`.
 

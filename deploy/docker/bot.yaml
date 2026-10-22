@@ -16,9 +16,14 @@ services:
     restart: unless-stopped
     environment:
       TZ: ${TZ:-Asia/Kuala_Lumpur}
+      # The Claude account this bot is assigned to (lark-bots.sh use-claude); see entrypoint.sh
+      LARK_BOT_CLAUDE_WANT: ${CLAUDE_ACCOUNT:-}
     env_file:
       # Shared Claude credential ("sign in once"): CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY
       - path: claude.env
+        required: false
+      # The assigned Claude account's credential (lark-bots.sh claude-account set)
+      - path: claude-accounts/${CLAUDE_ACCOUNT:-.none}.env
         required: false
       # Optional per-bot override
       - path: bots/${BOT}.claude.env

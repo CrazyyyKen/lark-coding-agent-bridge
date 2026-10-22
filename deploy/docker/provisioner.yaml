@@ -1,0 +1,41 @@
+# Compose file for the bot provisioner. Started by `./lark-bots.sh provisioner start`,
+# which sets HOST_UID, DOCKER_GID and LARK_BOTS_DIR.
+#
+# It has the Docker socket, which is root-equivalent on this host. It uses it only
+# through lark-bots.sh, so it only ever creates and changes lark-bot-* containers.
+name: lark-provisioner
+
+services:
+  provisioner:
+    build:
+      context: .
+      dockerfile: Dockerfile.provisioner
+    image: lark-bot-provisioner:latest
+    container_name: lark-provisioner
+    restart: unless-stopped
+    # The owner of the lark-bots folder, so the bots/ and claude-accounts/ files it
+    # writes stay that user's; the docker group for the socket.
+    user: "${HOST_UID:?run via ./lark-bots.sh provisioner}:${DOCKER_GID:?run via ./lark-bots.sh provisioner}"
+    # The image's default working directory belongs to its bot user, and docker
+    # compose fails in a directory it can't read.
+    working_dir: ${LARK_BOTS_DIR}
+    env_file:
+      - path: provisioner.env
+    environment:
+      HOME: /tmp
+      TZ: ${TZ:-Asia/Kuala_Lumpur}
+      LARK_BOTS_DIR: ${LARK_BOTS_DIR}
+      PROVISIONER_LOGS_DIR: /tmp/logs
+    volumes:
+      # Same path inside as on the host, so lark-bots.sh and its compose files resolve alike.
+      - ${LARK_BOTS_DIR}:${LARK_BOTS_DIR}
+      - /var/run/docker.sock:/var/run/docker.sock
+    mem_limit: 512m
+    cpus: 0.5
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

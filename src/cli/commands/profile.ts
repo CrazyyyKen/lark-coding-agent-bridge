@@ -17,6 +17,7 @@ import {
 } from '../../config/profile-store';
 import type { RootConfig } from '../../config/profile-schema';
 import { resolveAppSecret } from '../../config/secret-resolver';
+import { readAllStdin } from '../prompt';
 import { writeFileAtomic } from '../../platform/atomic-write';
 import { acquireProfileRuntimeLock, checkRuntimeLock } from '../../runtime/locks';
 import { readAndPrune } from '../../runtime/registry';
@@ -32,6 +33,10 @@ export interface ProfileCreateOptions extends ProfileCommandOptions {
   workspace?: string;
   appId?: string;
   appSecret?: string;
+  /** Read the App Secret from the first line of stdin instead of `appSecret`. */
+  appSecretStdin?: boolean;
+  /** Test seam for `appSecretStdin`. */
+  readStdin?: () => Promise<string>;
   tenant?: string;
 }
 
@@ -106,6 +111,7 @@ export async function runProfileCreate(
 ): Promise<void> {
   const rootDir = opts.rootDir ?? paths.rootDir;
   const configFile = resolveAppPaths({ rootDir }).configFile;
+  const appSecret = opts.appSecretStdin ? await appSecretFromStdin(opts) : opts.appSecret;
   await withConfigFileLock(configFile, async () => {
     const root = await loadRootConfig(configFile);
     const existing = root?.profiles[name];
@@ -128,12 +134,23 @@ export async function runProfileCreate(
       agent: opts.agent,
       workspace: opts.workspace,
       appId: opts.appId,
-      appSecret: opts.appSecret,
+      appSecret,
       tenant: opts.tenant,
       allowBootstrap: true,
     });
   });
   console.log(`已创建 profile: ${name}`);
+}
+
+// Scripts (deploy/docker/lark-bots.sh) pipe the App Secret in, so it never shows up
+// in a process list the way --app-secret <secret> does.
+async function appSecretFromStdin(opts: ProfileCreateOptions): Promise<string> {
+  if (opts.appSecret) throw new Error('use either --app-secret or --app-secret-stdin, not both');
+  if (!opts.appId) throw new Error('--app-secret-stdin needs --app-id');
+  const input = await (opts.readStdin ?? readAllStdin)();
+  const secret = input.split(/\r?\n/, 1)[0]?.trim() ?? '';
+  if (!secret) throw new Error('--app-secret-stdin: nothing was piped in');
+  return secret;
 }
 
 export async function runProfileUse(

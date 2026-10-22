@@ -22,3 +22,6 @@ web/dist/
 scripts/
 CHANGELOG.md
 tests-smoke/
+
+# pnpm pack output (deploy/docker/README.md, Packing the bridge)
+/lark-channel-bridge-*.tgz

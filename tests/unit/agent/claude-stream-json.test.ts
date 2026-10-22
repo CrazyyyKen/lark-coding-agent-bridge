@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { ClaudeAdapter } from '../../../src/agent/claude/adapter.js';
-import { translateEvent } from '../../../src/agent/claude/stream-json.js';
+import { NOT_CONNECTED_REPLY, translateEvent } from '../../../src/agent/claude/stream-json.js';
 import type { AgentEvent } from '../../../src/agent/types.js';
 
 describe('Claude stream-json translator', () => {
@@ -20,6 +20,18 @@ describe('Claude stream-json translator', () => {
       { type: 'system', sessionId: 'sess-1', cwd: '/repo', model: 'sonnet' },
     ]);
     expect([...translateEvent({ type: 'system', subtype: 'init', session_id: 'sess-1' })][0]).not.toHaveProperty('threadId');
+  });
+
+  it('replaces "Please run /login" (no Claude credential) with a reply the chat user can act on', () => {
+    for (const text of ['Not logged in · Please run /login', 'Invalid API key · Please run /login']) {
+      expect([...translateEvent({ type: 'assistant', message: { content: [{ type: 'text', text }] } })]).toEqual([
+        { type: 'text', delta: NOT_CONNECTED_REPLY },
+      ]);
+    }
+    const normal = 'You can run /login yourself · Please run /login to try';
+    expect([...translateEvent({ type: 'assistant', message: { content: [{ type: 'text', text: normal }] } })]).toEqual([
+      { type: 'text', delta: normal },
+    ]);
   });
 
   it('translates assistant text, thinking, and tool_use blocks in order', () => {

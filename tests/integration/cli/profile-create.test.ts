@@ -171,6 +171,42 @@ describe('profile create command', () => {
     const managed = await realpath(resolveAppPaths({ rootDir: root, profile: 'claude-managed' }).defaultWorkspaceDir);
     expect(saved.profiles['claude-managed']?.workspaces.default).toBe(managed);
   });
+
+  it('reads the App Secret from the first line of stdin with appSecretStdin', async () => {
+    const root = await makeRoot();
+    await writeProfiles(root, 'codex-dev', ['codex-dev']);
+
+    await runProfileCreate('claude-piped', {
+      rootDir: root,
+      agent: 'claude',
+      appId: 'cli_claude_piped',
+      appSecretStdin: true,
+      readStdin: async () => '  piped-secret  \r\nignored second line\n',
+      tenant: 'lark',
+    });
+
+    const appPaths = resolveAppPaths({ rootDir: root, profile: 'claude-piped' });
+    expect(auth.validateAppCredentials).toHaveBeenCalledWith('cli_claude_piped', 'piped-secret', 'lark');
+    await expect(getSecret(secretKeyForApp('cli_claude_piped'), appPaths)).resolves.toBe('piped-secret');
+  });
+
+  it('refuses appSecretStdin when nothing is piped, without --app-id, or together with appSecret', async () => {
+    const root = await makeRoot();
+    await writeProfiles(root, 'codex-dev', ['codex-dev']);
+    const base = { rootDir: root, agent: 'claude', appSecretStdin: true } as const;
+
+    await expect(
+      runProfileCreate('a', { ...base, appId: 'cli_a', readStdin: async () => '\n' }),
+    ).rejects.toThrow(/nothing was piped in/);
+    await expect(
+      runProfileCreate('b', { ...base, readStdin: async () => 'secret\n' }),
+    ).rejects.toThrow(/needs --app-id/);
+    await expect(
+      runProfileCreate('c', { ...base, appId: 'cli_c', appSecret: 'x', readStdin: async () => 'secret\n' }),
+    ).rejects.toThrow(/not both/);
+    const saved = JSON.parse(await readFile(join(root, 'config.json'), 'utf8')) as RootConfig;
+    expect(Object.keys(saved.profiles)).toEqual(['codex-dev']);
+  });
 });
 
 async function makeRoot(): Promise<string> {

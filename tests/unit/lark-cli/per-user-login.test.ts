@@ -208,6 +208,29 @@ describe('per-user sign-in', () => {
     expect((await l.status(ALICE, true)).loggedIn).toBe(true);
   });
 
+  it('counts a sign-in whose token was stored even when lark-cli exits with an error', async () => {
+    // Seen on the server: "poll parse error" warnings, "token response received", exit 1.
+    const cli = fakeLarkCli();
+    const exec: LarkCliExec = vi.fn<LarkCliExec>(async (args, env, timeout) => {
+      const r = await cli.exec(args, env, timeout);
+      if (!args.includes('--device-code')) return r;
+      return {
+        code: 1,
+        stdout: '',
+        stderr: "[lark-cli] [WARN] device-flow: poll parse error: invalid character 'r'\n[lark-cli] device-flow: token response received",
+        timedOut: false,
+      };
+    });
+    const notify = vi.fn(async (_markdown: string) => {});
+    const l = logins(exec);
+
+    await l.startLogin(ALICE, notify);
+    await vi.waitFor(() => expect(notify).toHaveBeenCalled());
+
+    expect(String(notify.mock.calls[0]?.[0])).toMatch(/Signed in as \*\*Alice\*\*/);
+    expect((await l.runFor(ALICE)).identity).toMatchObject({ signedIn: true });
+  });
+
   it('discards a sign-in approved by a different Lark account', async () => {
     const cli = fakeLarkCli();
     // Alice forwarded her link and Bob opened it.

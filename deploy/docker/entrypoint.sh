@@ -14,6 +14,12 @@ case "${LARK_BOT_CLAUDE:-}" in
   own)          unset ANTHROPIC_API_KEY CLAUDE_CODE_OAUTH_TOKEN ;;
 esac
 
+# A bot assigned to a Claude account uses that account or nothing. Until the account's
+# credential is saved, the shared one must not stand in: usage would land on another seat.
+if [ -n "${LARK_BOT_CLAUDE_WANT:-}" ] && [ "${LARK_BOT_CLAUDE_ACCOUNT:-}" != "$LARK_BOT_CLAUDE_WANT" ]; then
+  unset ANTHROPIC_API_KEY CLAUDE_CODE_OAUTH_TOKEN
+fi
+
 mkdir -p "$HOME/workspace/.claude"
 if [ ! -f "$HOME/workspace/.claude/settings.json" ]; then
   cp /opt/lark-bot/workspace-settings.json "$HOME/workspace/.claude/settings.json"

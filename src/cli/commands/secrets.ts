@@ -4,7 +4,7 @@ import { paths } from '../../config/paths';
 import { loadRootConfig, readActiveProfile } from '../../config/profile-store';
 import { secretKeyForApp } from '../../config/schema';
 import { listAllProfiles } from '../../runtime/profile-discovery';
-import { promptPassword } from '../prompt';
+import { promptPassword, readAllStdin } from '../prompt';
 
 /**
  * `secrets` CLI surface. Two intended consumers:
@@ -192,19 +192,4 @@ async function listSecretProfiles(rootDir: string): Promise<Array<{ name: string
     if (!(err instanceof Error) || !err.message.startsWith('root config not found:')) throw err;
     return [{ name: resolveAppPaths({ rootDir }).profile }];
   }
-}
-
-// ────────────────────────────────────────────────────────────
-
-async function readAllStdin(): Promise<string> {
-  if (process.stdin.isTTY) return ''; // no input piped
-  return new Promise((resolve, reject) => {
-    let data = '';
-    process.stdin.setEncoding('utf8');
-    process.stdin.on('data', (chunk) => {
-      data += chunk;
-    });
-    process.stdin.on('end', () => resolve(data));
-    process.stdin.on('error', reject);
-  });
 }

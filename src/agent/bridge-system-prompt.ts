@@ -181,6 +181,7 @@ const TEAM_RULES = `## 团队版：飞书身份与授权
 `;
 
 const TEAM_USER_SIGNED_IN = `4. 本次运行代表当前私聊用户，\`lark-cli\` 已指向他自己的登录目录。需要访问个人数据时用 \`--as user\`；用户只能看到他自己在飞书里本来就有权限看的内容。
+   他**现在已经登录**。如果之前的对话里说过只能用 bot 身份、或让他先发送 \`/login\`，那些话已经过时：不要再让他登录，直接用 \`--as user\` 处理他的请求。
 `;
 
 const TEAM_USER_SIGNED_OUT = `4. 本次运行代表当前私聊用户，但他**还没有登录**飞书账号，现在只能用 bot 身份（\`--as bot\`）。如果任务需要他的个人数据或要以他的身份操作，告诉他：发送 \`/login\` 获取登录链接，登录一次后再问，并在回复末尾加一个只有 \`/login\` 的快捷回复。不要自己发起授权。
@@ -188,6 +189,20 @@ const TEAM_USER_SIGNED_OUT = `4. 本次运行代表当前私聊用户，但他**
 
 const TEAM_SHARED_BOT = `4. 本次运行（群聊 / 文档评论 / 会议，或未开启个人登录的私聊）**只能用 bot 身份**（\`--as bot\`），不能代表任何个人。需要某人的个人数据时，请他私聊 bot 并发送 \`/login\` 登录后再问。
 `;
+
+/**
+ * A team member's current sign-in state, for the user turn of a resumed DM
+ * conversation. The conversation may hold replies from before a /login or
+ * /logout ("send /login first"), and Claude trusts those over the system prompt
+ * (seen on the server); a note in the latest turn outweighs them. undefined for
+ * shared (bot-only) runs.
+ */
+export function teamSignInNote(identity: AgentLarkIdentity): string | undefined {
+  if (identity.kind !== 'user') return undefined;
+  return identity.signedIn
+    ? '这个用户现在已经登录了飞书（bridge 已核实，不用你再检查）：lark-cli 指向他自己的登录目录，需要他的个人数据时直接用 --as user。之前对话里说他还没登录、只能用 bot 身份、或让他发送 /login 的内容都已过时，不要再让他登录。'
+    : '这个用户现在没有登录飞书（bridge 已核实）：只能用 --as bot。之前对话里说他已登录、或以他身份做过的事不代表现在还能这样做；需要他的个人数据时请他发送 /login。';
+}
 
 function teamSection(identity: AgentLarkIdentity): string {
   const situation =

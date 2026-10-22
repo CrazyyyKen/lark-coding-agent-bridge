@@ -1,9 +1,33 @@
 import { describe, expect, it } from 'vitest';
+import type { AgentLarkIdentity } from '../../../src/agent/types';
 import {
   BRIDGE_SYSTEM_PROMPT,
   buildBridgeSystemPrompt,
   prefixBridgeSystemPrompt,
+  teamSignInNote,
 } from '../../../src/agent/bridge-system-prompt';
+
+describe('team sign-in note (user turn of a resumed DM)', () => {
+  const user = (signedIn: boolean): AgentLarkIdentity => ({
+    kind: 'user',
+    openId: 'ou_a',
+    signedIn,
+    larkCliConfigDir: '/x',
+    blockedDirs: [],
+  });
+
+  it('says a signed-in member is signed in and earlier "/login first" replies are out of date', () => {
+    const note = teamSignInNote(user(true));
+    expect(note).toContain('已经登录');
+    expect(note).toContain('--as user');
+    expect(note).toContain('已过时');
+  });
+
+  it('says a signed-out member is signed out, and nothing for shared bot runs', () => {
+    expect(teamSignInNote(user(false))).toContain('没有登录');
+    expect(teamSignInNote({ kind: 'shared-bot', blockedDirs: [] })).toBeUndefined();
+  });
+});
 
 describe('bridge system prompt bot collaboration rules', () => {
   it('states that bots only receive messages via a real structured mention', () => {

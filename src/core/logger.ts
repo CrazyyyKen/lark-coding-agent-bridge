@@ -41,6 +41,14 @@ const STDOUT_INFO_ALLOWLIST = new Set<string>([
   'outbound.sent',
   'outbound.markdown-stream-fallback',
   'card.final',
+  'provisioner.started',
+  'provisioner.carded',
+  'provisioner.approved',
+  'provisioner.rejected',
+  'provisioner.provisioned',
+  'provisioner.claude-signin-sent',
+  'provisioner.claude-token-saved',
+  'provisioner.claude-renewal-due',
 ]);
 
 /**

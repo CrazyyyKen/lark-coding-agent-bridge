@@ -5,6 +5,7 @@ import type {
 } from '@larksuite/channel';
 import { createLarkChannel } from '@larksuite/channel';
 import { dirname, join, resolve as resolvePath } from 'node:path';
+import { teamSignInNote } from '../agent/bridge-system-prompt';
 import { claudeCapability, codexCapability } from '../agent/capability';
 import { modelLabel, normalizeModelSelection, resolveModelArg } from '../agent/models';
 import {
@@ -1206,6 +1207,11 @@ async function runAgentBatch(deps: RunBatchDeps): Promise<void> {
   } else if (quickReplyLimit !== DEFAULT_QUICK_REPLY_LIMIT) {
     instructions.push(`这个 bot 的快捷回复按钮上限是 ${quickReplyLimit} 个（不是 6 个）。`);
   }
+  // A team member's sign-in can change mid-conversation (/login, /logout). A resumed
+  // conversation still holds the old replies ("send /login first"), and Claude trusts
+  // them over the system prompt, so the current state goes into this turn instead.
+  const signInNote = larkIdentity && sessions.getRaw(scope) ? teamSignInNote(larkIdentity) : undefined;
+  if (signInNote) instructions.push(signInNote);
   const extraInstructions = instructions.length > 0 ? instructions : undefined;
 
   const prompt = buildPrompt(

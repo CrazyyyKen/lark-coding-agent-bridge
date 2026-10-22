@@ -27,6 +27,16 @@ interface ClaudeRawEvent {
   total_cost_usd?: number;
 }
 
+/**
+ * Claude Code answers "Not logged in · Please run /login" (or "Invalid API key · …")
+ * when the bot has no working Claude credential. Nobody chatting with the bot can
+ * run /login, so they get this instead.
+ */
+export const NOT_CONNECTED_REPLY =
+  "I can't answer yet: I'm not connected to Claude. The AI Team is finishing my setup, and you'll get a message as soon as I'm ready.";
+
+const NEEDS_LOGIN_RE = /·\s*Please run \/login\s*$/;
+
 export function* translateEvent(raw: unknown): Generator<AgentEvent> {
   if (!raw || typeof raw !== 'object') return;
   const evt = raw as ClaudeRawEvent;
@@ -44,7 +54,7 @@ export function* translateEvent(raw: unknown): Generator<AgentEvent> {
   if (evt.type === 'assistant' && evt.message?.content) {
     for (const block of evt.message.content) {
       if (block.type === 'text' && typeof block.text === 'string' && block.text) {
-        yield { type: 'text', delta: block.text };
+        yield { type: 'text', delta: NEEDS_LOGIN_RE.test(block.text.trim()) ? NOT_CONNECTED_REPLY : block.text };
       } else if (block.type === 'thinking' && typeof block.thinking === 'string' && block.thinking) {
         yield { type: 'thinking', delta: block.thinking };
       } else if (block.type === 'tool_use' && block.id && block.name) {

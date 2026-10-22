@@ -89,15 +89,28 @@ profile
   .option('--workspace <path>', 'initial working directory for this profile')
   .option('--app-id <id>', 'use an existing Lark/Feishu app instead of QR app creation')
   .option('--app-secret <secret>', 'App Secret for --app-id; prefer interactive input on shared machines')
+  .option('--app-secret-stdin', 'read the App Secret for --app-id from the first line of stdin (for scripts)')
   .option('--tenant <tenant>', 'tenant for --app-id (feishu or lark; default feishu)')
   .action(async (name: string, opts: {
     agent?: string;
     workspace?: string;
     appId?: string;
     appSecret?: string;
+    appSecretStdin?: boolean;
     tenant?: string;
   }) => {
     await runProfileCreate(name, opts);
+  });
+
+program
+  .command('provisioner')
+  .description('Run the bot provisioner: approval cards for the request form, bots on Approve (docs/bot-provisioning-plan.md)')
+  .option('--check', 'check the configuration, Base and approval group once, then exit')
+  .option('--card-to <id>', 'with --check: send a preview approval card to this email, ou_ or oc_ id')
+  .action(async (opts: { check?: boolean; cardTo?: string }) => {
+    const { checkProvisioner, configFromEnv, runProvisioner } = await import('../provisioner/index');
+    if (opts.check) await checkProvisioner(configFromEnv(), opts.cardTo);
+    else await runProvisioner();
   });
 
 profile
