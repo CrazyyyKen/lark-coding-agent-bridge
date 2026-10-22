@@ -35,7 +35,7 @@ Automated tests already cover the logic: parsing, the requester-only and single-
 | 1.1–1.28, 8.11–8.15, 2.20–2.22 | `gdex-ai`, with two member accounts (A and B). Everyone who has DMed it before also gets the sign-in card on their next DM. |
 | 3.4, 3.5 | `joeee` and `ken`: memory and multi-step commands |
 
-**On `joeee` since 2026-10-21 19:47** (image `d6b2c995637d` from `main` @ `67a656e`; rollback image `lark-bot:pre-config-qr`): 8.20–8.22 (the button limit in `/config`). `weileong`, `ken` and `gdex-ai` move to this image once these pass on `joeee`.
+**Next release, built and waiting** (image `lark-bot:main-d88d7ec` from `main` @ `d88d7ec`, built in `~/lark-bots-release/`): 8.20–8.22 (the button limit in `/config`) and the 2.16 background-loop fix. `weileong`, `ken` and `gdex-ai` are pinned to their current image (`IMAGE_TAG=main-412fddf` in `bots/<name>.env`) until they're moved to it. `joeee` has run a **`feat/bot-provisioning`** build since 2026-10-22 09:45 for the provisioning tests, so it isn't a `main` test bot right now; its build does include the button limit, so 8.20–8.22 can be checked there.
 
 ## 0. Before you start
 
