@@ -19,7 +19,9 @@ function request(over: Partial<RequestRecord> = {}): RequestRecord {
     botType: 'Personal',
     appId: 'cli_a1b2c3',
     appSecret: 'right-secret',
-    confirmations: ['a', 'b'],
+    confirmations: ['a', 'b', 'c'],
+    claudeEmail: 'ai@gdexpress.com',
+    claudeHolder: { id: 'ou_holder', name: 'AI subscription' },
     department: '',
     purpose: '',
     documents: '',
@@ -250,7 +252,7 @@ describe('Provisioner.handleAction', () => {
     await t.click('prov.approve');
     await t.settled();
     expect(t.req.status).toBe('Waiting for Claude');
-    expect(t.accountUpdates).toEqual([{ 'Credential on server': 'Waiting for sign-in' }]);
+    expect(t.accountUpdates).toEqual([{ Holder: [{ id: 'ou_holder' }] }, { 'Credential on server': 'Waiting for sign-in' }]);
     // Only a note that it isn't ready yet, from the bot itself.
     expect(t.welcome).toHaveBeenCalledTimes(1);
     expect(t.welcome).toHaveBeenCalledWith('ali-tan', 'ali.tan@gdexpress.com', expect.stringContaining("can't answer yet"));

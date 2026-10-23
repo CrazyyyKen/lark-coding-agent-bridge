@@ -23,6 +23,8 @@ export interface Checks {
   owner: 'match' | 'mismatch' | 'unknown';
   /** A bot already running this app. */
   duplicateOf?: string;
+  /** The requester's Claude account against the seat list (Claude Accounts). */
+  claude?: { email: string; holder?: string; state: 'connected' | 'seat' | 'unknown' };
   /** Missing or invalid form answers. */
   problems: string[];
 }
@@ -113,6 +115,17 @@ function checkLines(checks: Checks): string {
         : '⚠️ Couldn\'t confirm who owns the app',
   );
   if (checks.duplicateOf) lines.push(`❌ This app already runs as bot **${md(checks.duplicateOf)}**`);
+  const c = checks.claude;
+  if (c) {
+    const who = c.holder ? ` (signs in: ${md(c.holder)})` : '';
+    lines.push(
+      c.state === 'connected'
+        ? `✅ Claude account **${md(c.email)}**${who} is connected on the server`
+        : c.state === 'seat'
+          ? `☑️ Claude account **${md(c.email)}**${who} is a GDEX seat, not connected yet: Approve sends its holder the Connect Claude card`
+          : `⚠️ Claude account **${md(c.email)}**${who} isn't in the seat list yet: add it in the Claude admin console (PR approved) before you Approve`,
+    );
+  }
   for (const p of checks.problems) lines.push(`⚠️ ${md(p)}`);
   return lines.join('\n');
 }
@@ -200,6 +213,10 @@ export function requestCard(opts: {
   }
 
   const options = accountOptions(accounts);
+  // The requester's Claude account is offered even before it's in the seat list.
+  if (req.claudeEmail && !accounts.some((a) => a.account === req.claudeEmail)) {
+    options.unshift({ text: { tag: 'plain_text', content: `${req.claudeEmail} · requester's account (new seat)` }, value: req.claudeEmail });
+  }
   const initial = options.some((o) => (o as { value: string }).value === opts.defaultAccount)
     ? opts.defaultAccount
     : undefined;

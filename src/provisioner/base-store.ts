@@ -51,6 +51,9 @@ export interface RequestRecord {
   sensitivity: string;
   requester?: Person;
   approver?: Person;
+  /** The Claude account the requester says the agent will use, and who signs in to it. */
+  claudeEmail: string;
+  claudeHolder?: Person;
   status: string;
   serverBotName: string;
   cardMessageId: string;
@@ -146,6 +149,8 @@ export function toRequest(r: RawRecord): RequestRecord {
     sensitivity: cellText(f['Sensitivity confirmation']),
     requester: cellPeople(f.Requester)[0],
     approver: cellPeople(f.Approver)[0],
+    claudeEmail: cellText(f['Claude account email']).trim().toLowerCase(),
+    claudeHolder: cellPeople(f['Claude account holder'])[0],
     status: cellText(f.Status),
     serverBotName: cellText(f['Server bot name']).trim(),
     cardMessageId: cellText(f['Card message ID']).trim(),

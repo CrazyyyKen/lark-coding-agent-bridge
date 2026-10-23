@@ -306,7 +306,7 @@ export class Provisioner {
     if (checks.credentials === 'bad') {
       return { kind: 'secret', message: `Lark rejected the App ID or App Secret${checks.credentialsDetail ? ` (${checks.credentialsDetail})` : ''}` };
     }
-    const formIssue = checks.problems.find((p) => p.startsWith('App ID'));
+    const formIssue = checks.problems.find((p) => p.startsWith('App ID') || p.startsWith('No Claude account'));
     return formIssue ? { kind: 'other', message: formIssue } : undefined;
   }
 
@@ -444,15 +444,21 @@ export class Provisioner {
       account = choice.newSeat ?? (choice.account as string);
       fields = { Account: account, Kind: 'Standard seat', 'Credential on server': 'Not saved' };
     }
+    // The requester named who signs in to their Claude account: that person gets its sign-in card.
+    const holder = account === req.claudeEmail && req.claudeHolder ? [{ id: req.claudeHolder.id }] : undefined;
     const existing = (await store.accounts()).find((a) => a.account === account);
-    if (existing) return { account, recordId: existing.recordId };
-    return { account, recordId: await store.createAccount(fields) };
+    if (existing) {
+      if (holder && !existing.holder) await store.updateAccount(existing.recordId, { Holder: holder });
+      return { account, recordId: existing.recordId };
+    }
+    return { account, recordId: await store.createAccount(holder ? { ...fields, Holder: holder } : fields) };
   }
 
   private async check(req: RequestRecord, secret: string): Promise<Checks> {
     const problems: string[] = [];
     if (!APP_ID_RE.test(req.appId)) problems.push(`App ID "${req.appId}" doesn't look like cli_…`);
-    if (req.confirmations.length < 2) problems.push('The requester didn\'t tick both confirmations');
+    if (req.confirmations.length < 3) problems.push('The requester didn\'t tick all three confirmations');
+    if (!req.claudeEmail) problems.push('No Claude account given: the requester needs one (PR approved) before a bot is set up');
     if (!['Personal', 'Department'].includes(req.botType)) problems.push('Bot type is missing');
     if (req.botType === 'Department') {
       if (!req.department) problems.push('Department is missing');
@@ -484,7 +490,16 @@ export class Provisioner {
     }
 
     const duplicateOf = APP_ID_RE.test(req.appId) ? await this.deps.bots.botForApp(req.appId) : undefined;
-    return { credentials, credentialsDetail, owner, duplicateOf, problems };
+    let claude: Checks['claude'];
+    if (req.claudeEmail) {
+      const row = (await this.deps.store.accounts().catch(() => [])).find((a) => a.account === req.claudeEmail);
+      claude = {
+        email: req.claudeEmail,
+        holder: req.claudeHolder?.name,
+        state: !row ? 'unknown' : row.credential === CREDENTIAL.saved ? 'connected' : 'seat',
+      };
+    }
+    return { credentials, credentialsDetail, owner, duplicateOf, claude, problems };
   }
 
   private async requestCard(req: RequestRecord, checks: Checks, failure?: Failure): Promise<object> {
@@ -498,7 +513,8 @@ export class Provisioner {
       req,
       checks,
       accounts,
-      defaultAccount: settings['Default Claude account'] ?? '',
+      // The requester's own Claude account comes first; the Settings default is only a fallback.
+      defaultAccount: req.claudeEmail || (settings['Default Claude account'] ?? ''),
       seats,
       failure,
     });

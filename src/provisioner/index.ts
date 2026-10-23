@@ -122,7 +122,7 @@ export async function checkProvisioner(cfg: ProvisionerConfig, cardTo?: string):
   const { requestCard } = await import('./cards');
   const sample = pending[0] ?? {
     recordId: 'recSample', requestId: 'REQ-SAMPLE', agentName: "Sample's AI Agent", botType: 'Personal',
-    appId: 'cli_sample000000000', appSecret: '', confirmations: [], department: '', purpose: '', documents: '',
+    appId: 'cli_sample000000000', appSecret: '', confirmations: [], claudeEmail: 'sample@gdexpress.com', department: '', purpose: '', documents: '',
     wikiPages: '', groupChats: '', sensitivity: '', status: '', serverBotName: '', cardMessageId: '',
     claudeAccountRecordIds: [], requester: { id: 'ou_sample', name: 'Sample Person', email: 'sample@gdexpress.com' },
   };
