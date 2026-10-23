@@ -58,7 +58,7 @@ export function frontDoorCard(links: Links): object {
           tag: 'markdown',
           content: [
             "**What's a Lark AI agent?**",
-            'An assistant powered by Claude that lives in Lark. You message it like a colleague, and it can draft documents and emails, summarise your mail and chats, check your calendar, build Lark Bases and forms, and run tasks for you on a schedule. It runs on the AI Team\'s server, so it\'s always on.',
+            'An assistant powered by Claude that lives in Lark. You message it like a colleague, and it can draft documents and emails, summarise your mail and chats, check your calendar, build Lark Bases and forms, and run tasks for you on a schedule. It\'s always on: reach it from Lark on your phone, computer or tablet.',
             '',
             '**Two kinds**',
             '- **Personal agent:** just for you. Once you sign in, it works with your own mail, calendar and documents.',
