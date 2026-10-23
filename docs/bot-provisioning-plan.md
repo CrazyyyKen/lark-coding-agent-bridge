@@ -15,6 +15,11 @@ Anyone who wants a Lark agent follows the [request guide](https://gdexgroup.sg.l
 ## 2. Flow
 
 ```
+Step 0: the agent needs a Claude account (the requester's seat or the department's).
+No seat yet → the department raises a Purchase Requisition (PR guide); the AI Team
+adds the seat once it is approved. Nobody submits the form without one.
+        │
+        ▼
 Requester follows the guide: creates the agent (bot, events and callbacks come preset),
 adds AI subscription as Administrator, publishes, Lark admin approves the version
         │
@@ -23,7 +28,7 @@ Lark form ──► Base "AI Agent Requests"   Status = Submitted
                     │  provisioner polls every minute
                     ▼
      Approval card in the AI Team group (oc_f803a6d76d71872a15dbba9a5a92fda0)
-     Claude: (•) Seat [ai@gdexpress.com ▾]  ( ) API key [▾ / paste]
+     Claude: (•) Seat [requester's account from the form ▾]  ( ) API key [▾ / paste]
      [Approve]  [Reject + reason]
                     │ Approve
                     ▼
@@ -55,7 +60,9 @@ One Base with four tables (Requests, Claude Accounts, Events, Settings), created
 | Agent name | Text | Yes | The name the requester gave the app, e.g. "Ali's AI Agent" |
 | App ID | Text | Yes | Help text: "Developer Console → your app → Credentials & Basic Info. Starts with `cli_`, e.g. `cli_a1b2c3d4e5f6a7b8`" |
 | App Secret | Text | Yes | Help text: "Same page, under App ID. 32 characters: click the eye icon, then copy. Paste only here." Hidden from everyone but the provisioner (field permissions); cleared once stored on the server |
-| Confirmations | Checkboxes | Yes | "AI subscription added as Administrator" · "My Lark admin approved the app version" |
+| Confirmations | Checkboxes | Yes | "AI subscription added as Administrator" · "My Lark admin approved the app version" · "This agent has a Claude account (the PR is approved)". All three needed; the card flags a request with fewer |
+| Claude account email | Text | Yes | The seat the agent will use: the requester's own or the department's (e.g. `hr@gdexpress.com`). Missing → the card blocks Approve |
+| Claude account holder | Person | Yes | Who signs in to that seat; the Connect Claude card goes to them (§5.3) |
 | Department | Single select | Department only | |
 | Purpose | Long text | Department only | What it should answer and do, for whom |
 | Who will use it | Person / department | Department only | Must match the app's availability |
@@ -149,7 +156,7 @@ The approver chooses on the approval card, the same way for personal and departm
 
 | Choice on the card | What happens |
 |---|---|
-| **Seat** (default `ai@gdexpress.com`; any other seat from the Claude Accounts table, or a new one by email) | The approver assigns the seat themselves (a new seat: invite the person in the Claude admin console first). If the seat's token is already saved on the server, the bot uses it at once. If not, the Claude sign-in card goes out (§5.3) |
+| **Seat** (default: the Claude account email from the form, else the Settings default `ai@gdexpress.com`; any other seat from the Claude Accounts table) | The card says whether the form's account is already connected (✅), a known seat without a token (☑️), or not in Claude Accounts yet (⚠️: add the seat in the Claude admin console first). If the seat's token is already saved on the server, the bot uses it at once. If not, the Claude sign-in card goes to the form's holder (§5.3) |
 | **API key** (an existing key from Claude Accounts, or paste a new one into the card) | Saved on the server and used at once; nobody else is involved |
 
 The choice can also be changed later in Base (Requests → Claude account); the provisioner applies it with `use-claude` and restarts the bot.
@@ -209,3 +216,5 @@ Later, if static keys become a burden: Workload Identity Federation (short-lived
 | Seat sign-in | When the chosen seat has no token on the server, the provisioner starts the sign-in and the seat holder gets a card: open the link, approve, paste the code. The token (one year) is saved and the bot restarted. The same card goes out again 30 days before expiry (§5.3) |
 | Bot, events and callbacks setup | Not needed: the guide's "Create" shortcut presets them |
 | The provisioner's own Lark app (2026-10-22) | A dedicated app. Lark hands each event of an app to one of its open connections, so sharing Gem (`joeee`) or Claude (laptop bridge) would send about half the clicks and DMs to the wrong process |
+| Claude account comes first (2026-10-23) | The requester names the seat and its holder in the form. A team seat belongs to a named person, usually a department email (e.g. `hr@gdexpress.com`). Without a seat they don't submit: the department raises a Purchase Requisition ([PR guide](https://gdexgroup.sg.larksuite.com/wiki/OMHYwW7XAiWkCZkMvy8lLVBzg7S)) or contacts the AI Team, and requests again once the PR is approved and the seat added. PRs aren't tracked here, and nothing is approved ahead of a PR, so the AI Team never holds half-done requests |
+| AI Agent Admin DMs (2026-10-23) | Anyone who messages the app gets a fixed card (no agent run): what an agent is, the Claude account step, and buttons for the request guide, PR guide, form and user guide. Links overridable from Base Settings |

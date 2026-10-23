@@ -20,6 +20,7 @@ describe('front door auto-reply', () => {
     expect(card).toContain('https://gdexgroup.sg.larksuite.com/wiki/NYRWwPSsYirbBokuOhBlAROzghe');
     expect(card).toContain('https://gdexgroup.sg.larksuite.com/wiki/Jh7owFCemi3GO7kBBeblkcydg7c');
     expect(card).toContain('shrlgH0hereELEP5G4uPrPcz7wb');
+    expect(card).toContain('https://gdexgroup.sg.larksuite.com/wiki/OMHYwW7XAiWkCZkMvy8lLVBzg7S');
   });
 
   it('ignores groups and other bots, and answers a burst of messages once a minute', async () => {

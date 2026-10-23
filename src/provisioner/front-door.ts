@@ -11,6 +11,7 @@ export const FRONT_DOOR_DEFAULTS = {
   'User guide': 'https://gdexgroup.sg.larksuite.com/wiki/Jh7owFCemi3GO7kBBeblkcydg7c',
   'Request guide': 'https://gdexgroup.sg.larksuite.com/wiki/NYRWwPSsYirbBokuOhBlAROzghe',
   'Request form': 'https://gdexgroup.sg.larksuite.com/share/base/form/shrlgH0hereELEP5G4uPrPcz7wb',
+  'PR guide': 'https://gdexgroup.sg.larksuite.com/wiki/OMHYwW7XAiWkCZkMvy8lLVBzg7S',
   'Support contact': 'the AI Team',
 } as const;
 
@@ -56,9 +57,10 @@ export function frontDoorCard(links: Links): object {
           tag: 'markdown',
           content: [
             '**How to get one**',
-            '1. Follow **How to request an agent**: create your agent app in the Lark Developer Console and have your Lark admin approve it.',
-            '2. Fill in the **request form**.',
-            '3. The AI Team approves it, and your new agent messages you when it\'s ready to chat.',
+            "1. Make sure it has a **Claude account**: your own seat, or your department's (e.g. hr@gdexpress.com). No seat yet? Your department raises a Purchase Requisition first (**How to raise a PR**).",
+            '2. Follow **How to request an agent**: create your agent app in the Lark Developer Console and have your Lark admin approve it.',
+            '3. Fill in the **request form**.',
+            '4. The AI Team approves it, and your new agent messages you when it\'s ready to chat.',
           ].join('\n'),
         },
         {
@@ -67,6 +69,7 @@ export function frontDoorCard(links: Links): object {
           horizontal_spacing: 'small',
           columns: [
             { tag: 'column', width: 'auto', elements: [linkButton('How to request an agent', links['Request guide'], 'primary')] },
+            { tag: 'column', width: 'auto', elements: [linkButton('How to raise a PR', links['PR guide'], 'default')] },
             { tag: 'column', width: 'auto', elements: [linkButton('Request form', links['Request form'], 'default')] },
             { tag: 'column', width: 'auto', elements: [linkButton('How to use your agent', links['User guide'], 'default')] },
           ],
