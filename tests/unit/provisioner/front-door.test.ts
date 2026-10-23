@@ -35,8 +35,20 @@ describe('front door auto-reply', () => {
   });
 
   it('takes its links from the Base Settings when set', () => {
-    const links = frontDoorLinks({ 'Request form': 'https://example.com/form', 'Support contact': 'Joe' });
+    const links = frontDoorLinks({ 'Request form': 'https://example.com/form', 'Support contacts': 'joe@example.com, the IT desk' });
     expect(links['Request form']).toBe('https://example.com/form');
-    expect(text(frontDoorCard(links))).toContain('ask Joe');
+    const card = text(frontDoorCard(links));
+    expect(card).toContain('<at email=joe@example.com></at> the IT desk');
+  });
+
+  it('mentions the AI Team by email and gives every button its own full-width row', () => {
+    const card = frontDoorCard(frontDoorLinks({})) as { body: { elements: Array<{ tag: string; width?: string }> } };
+    const s = text(card);
+    for (const email of ['ai@gdexpress.com', 'joeee@gdexpress.com', 'kenhow@gdexpress.com']) {
+      expect(s).toContain(`<at email=${email}></at>`);
+    }
+    const buttons = card.body.elements.filter((e) => e.tag === 'button');
+    expect(buttons).toHaveLength(4);
+    expect(buttons.every((b) => b.width === 'fill')).toBe(true);
   });
 });

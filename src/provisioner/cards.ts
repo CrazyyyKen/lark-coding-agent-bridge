@@ -13,6 +13,8 @@ export const CMD = {
   knowledgeCheck: 'prov.knowledge_check',
   /** Department bot checklist: the pilot went well. */
   goLive: 'prov.go_live',
+  /** Waiting card: the new seat is invited in the Claude admin console, so send the Connect Claude card. */
+  seatAdded: 'prov.seat_added',
 } as const;
 
 export interface Checks {
@@ -23,8 +25,16 @@ export interface Checks {
   owner: 'match' | 'mismatch' | 'unknown';
   /** A bot already running this app. */
   duplicateOf?: string;
-  /** The requester's Claude account against the seat list (Claude Accounts). */
-  claude?: { email: string; holder?: string; state: 'connected' | 'seat' | 'unknown' };
+  /**
+   * The requester's Claude account against the seat list (Claude Accounts). "new": the
+   * requester says its PR is approved but the seat isn't added yet; pr shows the proof.
+   */
+  claude?: {
+    email: string;
+    holder?: string;
+    state: 'connected' | 'seat' | 'new' | 'unknown';
+    pr?: { number: string; screenshots: number; link?: string };
+  };
   /** Missing or invalid form answers. */
   problems: string[];
 }
@@ -118,16 +128,29 @@ function checkLines(checks: Checks): string {
   const c = checks.claude;
   if (c) {
     const who = c.holder ? ` (signs in: ${md(c.holder)})` : '';
-    lines.push(
-      c.state === 'connected'
-        ? `✅ Claude account **${md(c.email)}**${who} is connected on the server`
-        : c.state === 'seat'
-          ? `☑️ Claude account **${md(c.email)}**${who} is a GDEX seat, not connected yet: Approve sends its holder the Connect Claude card`
-          : `⚠️ Claude account **${md(c.email)}**${who} isn't in the seat list yet: add it in the Claude admin console (PR approved) before you Approve`,
-    );
+    if (c.state === 'new') lines.push(newSeatLine(c.email, who, c.pr));
+    else {
+      lines.push(
+        c.state === 'connected'
+          ? `✅ Claude account **${md(c.email)}**${who} is connected on the server`
+          : c.state === 'seat'
+            ? `☑️ Claude account **${md(c.email)}**${who} is an active seat, not connected yet: Approve sends its holder the Connect Claude card`
+            : `⚠️ Claude account **${md(c.email)}**${who} isn't in the seat list yet: add it in the Claude admin console (PR approved) before you Approve`,
+      );
+    }
   }
   for (const p of checks.problems) lines.push(`⚠️ ${md(p)}`);
   return lines.join('\n');
+}
+
+function newSeatLine(email: string, who: string, pr: NonNullable<Checks['claude']>['pr']): string {
+  const proof = pr?.number ? `PR **${md(pr.number)}**` : 'no PR number';
+  const shots = pr?.screenshots ? 'screenshot attached' : 'no screenshot';
+  const open = pr?.link ? ` ([open the request](${pr.link}))` : ' (in the Base record)';
+  return [
+    `🛒 New seat to add: **${md(email)}**${who}. ${proof}, ${shots}${open}.`,
+    'Check the PR, then Approve. Invite the seat in the Claude admin console and click **Seat added** on the next card: only then does its holder get the Connect Claude card.',
+  ].join('\n');
 }
 
 function seatLine(seats: SeatUse): string {
@@ -373,6 +396,7 @@ export function signInCard(opts: { account: string; url: string; validMinutes: n
       tag: 'markdown',
       content: [
         `The AI agents on **${md(opts.account)}** need its Claude sign-in (valid one year).`,
+        "New seat? First accept the invitation email from Anthropic so you can sign in to claude.ai.",
         `1. Open the link below in a browser **signed in to claude.ai as ${md(opts.account)}** and approve.`,
         '2. Copy the code the page shows and paste it here.',
         `Only this card's current link works, for about ${opts.validMinutes} minutes: a code from an earlier link is rejected.`,
@@ -446,19 +470,44 @@ export function connectedCard(opts: { req: RequestRecord; bot: string; account: 
   ]);
 }
 
-/** Bot created, but its Claude account can't answer yet; the requester hasn't been told. */
-export function waitingCard(opts: { req: RequestRecord; by: string; bot: string; account: string; apiKey: boolean }): object {
+/**
+ * Bot created, but its Claude account can't answer yet; the requester hasn't been told.
+ * seatPending: a new seat from an approved PR, held until someone clicks Seat added.
+ */
+export function waitingCard(opts: {
+  req: RequestRecord;
+  by: string;
+  bot: string;
+  account: string;
+  apiKey: boolean;
+  seatPending?: boolean;
+  seatAddedBy?: string;
+}): object {
   const { req } = opts;
+  const holder = req.claudeHolder?.name ? md(req.claudeHolder.name) : 'its holder';
   const next = opts.apiKey
     ? `The API key **${md(opts.account)}** didn't answer. Check it with \`./lark-bots.sh claude-account check ${md(opts.account)}\`, set it again if needed, then set its "Credential on server" to Saved in the Base.`
-    : `**${md(opts.account)}** has no Claude token on the server yet. Its holder gets a "Connect Claude" card; once they finish it, the requester is told.`;
-  return card(`Waiting for Claude: ${req.requestId}`.trim(), 'yellow', [
+    : opts.seatPending
+      ? `🛒 Invite **${md(opts.account)}** as a seat in the Claude admin console${req.prNumber ? ` (PR ${md(req.prNumber)})` : ''}, then click **Seat added**. ${holder} then gets the "Connect Claude" card (after accepting Anthropic's invitation email).`
+      : opts.seatAddedBy
+        ? `Seat added by ${opts.seatAddedBy}. ${holder} has been sent the "Connect Claude" card; once they finish it, the requester is told.`
+        : `**${md(opts.account)}** has no Claude token on the server yet. Its holder gets a "Connect Claude" card; once they finish it, the requester is told.`;
+  const elements: object[] = [
     { tag: 'markdown', content: summary(req) },
     {
       tag: 'markdown',
       content: `✅ Approved by ${opts.by} · created as **${md(opts.bot)}**\n⏳ ${next}\nThe requester has been told it's set up but not ready yet; the welcome follows once it can answer.`,
     },
-  ]);
+  ];
+  if (opts.seatPending) {
+    elements.push({
+      tag: 'button',
+      text: { tag: 'plain_text', content: 'Seat added: send Connect Claude' },
+      type: 'primary',
+      behaviors: [{ type: 'callback', value: { cmd: CMD.seatAdded, record: req.recordId } }],
+    });
+  }
+  return card(`Waiting for Claude: ${req.requestId}`.trim(), 'yellow', elements);
 }
 
 export function rejectedCard(req: RequestRecord, by: string, reason: string): object {

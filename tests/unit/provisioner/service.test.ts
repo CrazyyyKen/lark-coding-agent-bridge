@@ -19,9 +19,12 @@ function request(over: Partial<RequestRecord> = {}): RequestRecord {
     botType: 'Personal',
     appId: 'cli_a1b2c3',
     appSecret: 'right-secret',
-    confirmations: ['a', 'b', 'c'],
+    confirmations: ['a', 'b'],
     claudeEmail: 'ai@gdexpress.com',
     claudeHolder: { id: 'ou_holder', name: 'AI subscription' },
+    claudeSeat: 'Active: I can already sign in to claude.ai with it',
+    prNumber: '',
+    prScreenshots: [],
     department: '',
     purpose: '',
     documents: '',
@@ -92,15 +95,29 @@ function setup(opts: {
       accounts: async () => accounts,
       createAccount: async (fields) => {
         created.push(fields);
+        accounts.push({
+          recordId: 'recNewAcc',
+          account: String(fields.Account),
+          kind: String(fields.Kind),
+          credential: String(fields['Credential on server']),
+          botRecordIds: [],
+        });
         return 'recNewAcc';
       },
-      updateAccount: async (_id, fields) => {
+      updateAccount: async (id, fields) => {
         accountUpdates.push(fields);
+        const row = accounts.find((a) => a.recordId === id);
+        if (row && typeof fields['Credential on server'] === 'string') row.credential = fields['Credential on server'];
       },
-      settings: async () => ({ 'Default Claude account': 'ai@gdexpress.com', 'Team seats bought': '5' }),
+      settings: async () => ({
+        'Default Claude account': 'ai@gdexpress.com',
+        'Team seats bought': '5',
+        'Base link': 'https://example.larksuite.com/base/bascn1',
+      }),
       event: async (_id, event) => {
         events.push(event);
       },
+      requestLink: (base, recordId) => `${base}?table=tblReq&record=${recordId}`,
     },
     cards: {
       send: async (_chat, card) => {
@@ -274,6 +291,54 @@ describe('Provisioner.handleAction', () => {
     // And a fresh message in the AI Team group.
     expect(title(t.sent[t.sent.length - 1])).toBe("Connected: Ali's AI Agent");
     expect(text(t.sent[t.sent.length - 1])).toContain('sent the welcome message with the user guide');
+  });
+
+  it('new seat from an approved PR: shows the proof, holds Connect Claude until someone clicks Seat added', async () => {
+    const t = setup({
+      req: {
+        claudeEmail: 'hr@gdexpress.com',
+        claudeHolder: { id: 'ou_siti', name: 'Siti' },
+        claudeSeat: 'PR approved: the AI Team still needs to add the seat',
+        prNumber: '202610090141',
+        prScreenshots: ['pr.png'],
+      },
+      addResult: { result: { ok: true, bot: 'ali-tan', claude: 'missing' } },
+    });
+    await t.p.poll();
+    const card = text(t.sent[0]);
+    expect(card).toContain('New seat to add');
+    expect(card).toContain('PR **202610090141**, screenshot attached');
+    expect(card).toContain('https://example.larksuite.com/base/bascn1?table=tblReq&record=rec1');
+
+    await t.click('prov.approve', { claude_account: 'hr@gdexpress.com' });
+    await t.settled();
+    expect(t.req.status).toBe('Waiting for Claude');
+    expect(t.created).toEqual([
+      { Account: 'hr@gdexpress.com', Kind: 'Standard seat', 'Credential on server': 'Not saved', Holder: [{ id: 'ou_siti' }] },
+    ]);
+    // Held: the holder gets nothing until the seat exists.
+    expect(t.accountUpdates).toEqual([{ 'Credential on server': 'Seat not added yet' }]);
+    const waiting = text(t.updatedCards[t.updatedCards.length - 1]);
+    expect(waiting).toContain('prov.seat_added');
+    expect(waiting).toContain('PR 202610090141');
+
+    // Someone outside the group can't release it.
+    expect((await t.click('prov.seat_added', {}, { operatorOpenId: 'ou_stranger' }))?.toast.type).toBe('error');
+    await t.click('prov.seat_added');
+    await t.settled();
+    expect(t.accountUpdates[t.accountUpdates.length - 1]).toEqual({ 'Credential on server': 'Waiting for sign-in' });
+    expect(t.events).toContain('seat-added');
+    const released = text(t.updatedCards[t.updatedCards.length - 1]);
+    expect(released).toContain('Seat added by Joe');
+    expect(released).not.toContain('prov.seat_added');
+  });
+
+  it('flags a new-seat request that has no PR number or screenshot', async () => {
+    const t = setup({ req: { claudeSeat: 'PR approved: the AI Team still needs to add the seat' } });
+    await t.p.poll();
+    const card = text(t.sent[0]);
+    expect(card).toContain('No PR number given for the new seat');
+    expect(card).toContain('No screenshot of the approved PR attached');
   });
 
   it('does not provision an app that belongs to someone else', async () => {

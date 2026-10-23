@@ -1,6 +1,6 @@
 import { log } from '../core/logger';
 import type { BaseStore, ClaudeAccount, RequestRecord } from './base-store';
-import { CREDENTIAL, STATUS } from './base-store';
+import { CREDENTIAL, STATUS, needsNewSeat } from './base-store';
 import {
   CMD,
   connectedCard,
@@ -48,6 +48,7 @@ export type Store = Pick<
   | 'updateAccount'
   | 'settings'
   | 'event'
+  | 'requestLink'
 >;
 
 export type Bots = Pick<
@@ -159,7 +160,7 @@ export class Provisioner {
   }
 
   async handleAction(a: ActionInput): Promise<ActionReply | undefined> {
-    const commands: string[] = [CMD.approve, CMD.reject, CMD.knowledgeCheck, CMD.goLive];
+    const commands: string[] = [CMD.approve, CMD.reject, CMD.knowledgeCheck, CMD.goLive, CMD.seatAdded];
     if (!commands.includes(a.cmd)) return undefined;
     if (a.chatId !== this.deps.approvalChatId) return toast('error', 'Use the card in the AI Team group');
     if (!(await this.deps.members.isMember(a.chatId, a.operatorOpenId))) {
@@ -178,6 +179,11 @@ export class Provisioner {
     };
     try {
       const req = await this.deps.store.request(a.recordId);
+      if (a.cmd === CMD.seatAdded) {
+        if (req.status !== STATUS.waitingClaude) return toast('info', `This request is ${req.status || 'not set up yet'}`);
+        later('seat-added', () => this.seatAdded(req, a));
+        return toast('info', 'Sending its holder the Connect Claude card…');
+      }
       if (a.cmd === CMD.knowledgeCheck || a.cmd === CMD.goLive) {
         if (req.status !== STATUS.knowledgeSetup) return toast('info', `This request is ${req.status || 'not set up yet'}`);
         if (a.cmd === CMD.goLive) {
@@ -234,6 +240,28 @@ export class Provisioner {
     await this.updateCard(
       req,
       knowledgeCard({ req, bot: req.serverBotName, items, checkedAt: this.stamp(), live: { by: person(a.operatorName, a.operatorOpenId) } }),
+    );
+  }
+
+  /** The AI Team invited the new seat: release its sign-in card to the holder (ClaudeAccounts.poll). */
+  private async seatAdded(req: RequestRecord, a: ActionInput): Promise<void> {
+    const row = (await this.deps.store.accounts()).find((x) => req.claudeAccountRecordIds.includes(x.recordId));
+    if (!row) return;
+    if (row.credential === CREDENTIAL.seatPending) {
+      await this.deps.store.updateAccount(row.recordId, { 'Credential on server': CREDENTIAL.waiting });
+    }
+    await this.deps.store.event(req.recordId, 'seat-added', row.account, a.operatorOpenId);
+    const approvedBy = req.approver ? person(req.approver.name, req.approver.id) : 'an approver';
+    await this.updateCard(
+      req,
+      waitingCard({
+        req,
+        by: approvedBy,
+        bot: req.serverBotName,
+        account: row.account,
+        apiKey: false,
+        seatAddedBy: person(a.operatorName, a.operatorOpenId),
+      }),
     );
   }
 
@@ -362,13 +390,20 @@ export class Provisioner {
       const sent = await bots.sendMessage(name, req.requester.email, pendingText(req));
       if (sent.code !== 0) log.warn('provisioner', 'pending-note-failed', { record: req.recordId, out: sent.output });
     }
+    // A seat still to be added from its PR: no sign-in card until the AI Team clicks Seat added,
+    // so the holder never gets a link they can't use yet.
+    const seatPending =
+      !choice.apiKey && needsNewSeat(req) && resolved.account === req.claudeEmail && resolved.credential !== CREDENTIAL.waiting;
     if (choice.apiKey) {
       await store.updateAccount(resolved.recordId, { 'Credential on server': CREDENTIAL.notSaved, 'Last check': 'did not answer' });
     } else {
-      // ClaudeAccounts sends the seat's holder the sign-in card.
-      await store.updateAccount(resolved.recordId, { 'Credential on server': CREDENTIAL.waiting });
+      // ClaudeAccounts sends the seat's holder the sign-in card once it is "Waiting for sign-in".
+      await store.updateAccount(resolved.recordId, { 'Credential on server': seatPending ? CREDENTIAL.seatPending : CREDENTIAL.waiting });
     }
-    await this.updateCard(req, waitingCard({ req, by, bot: name, account: resolved.account, apiKey: Boolean(choice.apiKey) }));
+    await this.updateCard(
+      req,
+      waitingCard({ req, by, bot: name, account: resolved.account, apiKey: Boolean(choice.apiKey), seatPending }),
+    );
   }
 
   /** The bot answers: tell the requester (Base automation on Ready, and the bot's own welcome). */
@@ -428,7 +463,7 @@ export class Provisioner {
     req: RequestRecord,
     choice: ClaudeChoice,
     botName: string,
-  ): Promise<{ account: string; recordId: string } | { failure: Failure }> {
+  ): Promise<{ account: string; recordId: string; credential: string } | { failure: Failure }> {
     const { store, bots } = this.deps;
     let account: string;
     let fields: Record<string, unknown>;
@@ -449,16 +484,22 @@ export class Provisioner {
     const existing = (await store.accounts()).find((a) => a.account === account);
     if (existing) {
       if (holder && !existing.holder) await store.updateAccount(existing.recordId, { Holder: holder });
-      return { account, recordId: existing.recordId };
+      return { account, recordId: existing.recordId, credential: existing.credential };
     }
-    return { account, recordId: await store.createAccount(holder ? { ...fields, Holder: holder } : fields) };
+    const recordId = await store.createAccount(holder ? { ...fields, Holder: holder } : fields);
+    return { account, recordId, credential: String(fields['Credential on server']) };
   }
 
   private async check(req: RequestRecord, secret: string): Promise<Checks> {
     const problems: string[] = [];
     if (!APP_ID_RE.test(req.appId)) problems.push(`App ID "${req.appId}" doesn't look like cli_…`);
-    if (req.confirmations.length < 3) problems.push('The requester didn\'t tick all three confirmations');
+    if (req.confirmations.length < 2) problems.push('The requester didn\'t tick both confirmations');
     if (!req.claudeEmail) problems.push('No Claude account given: the requester needs one (PR approved) before a bot is set up');
+    if (!req.claudeSeat) problems.push('The requester didn\'t say whether the Claude seat is active or still to be added');
+    if (needsNewSeat(req)) {
+      if (!req.prNumber) problems.push('No PR number given for the new seat');
+      if (!req.prScreenshots.length) problems.push('No screenshot of the approved PR attached');
+    }
     if (!['Personal', 'Department'].includes(req.botType)) problems.push('Bot type is missing');
     if (req.botType === 'Department') {
       if (!req.department) problems.push('Department is missing');
@@ -493,13 +534,25 @@ export class Provisioner {
     let claude: Checks['claude'];
     if (req.claudeEmail) {
       const row = (await this.deps.store.accounts().catch(() => [])).find((a) => a.account === req.claudeEmail);
+      const connected = row?.credential === CREDENTIAL.saved;
+      const fresh = needsNewSeat(req) && !connected;
       claude = {
         email: req.claudeEmail,
         holder: req.claudeHolder?.name,
-        state: !row ? 'unknown' : row.credential === CREDENTIAL.saved ? 'connected' : 'seat',
+        // Seats the server hasn't met yet are fine when the requester says they're active.
+        state: connected ? 'connected' : fresh ? 'new' : row || req.claudeSeat ? 'seat' : 'unknown',
+        pr: fresh
+          ? { number: req.prNumber, screenshots: req.prScreenshots.length, link: await this.requestLink(req) }
+          : undefined,
       };
     }
     return { credentials, credentialsDetail, owner, duplicateOf, claude, problems };
+  }
+
+  /** The request's row in the Base, where the PR screenshot is; needs Settings → "Base link". */
+  private async requestLink(req: RequestRecord): Promise<string | undefined> {
+    const base = (await this.deps.store.settings().catch(() => ({}) as Record<string, string>))['Base link'];
+    return base ? this.deps.store.requestLink(base, req.recordId) : undefined;
   }
 
   private async requestCard(req: RequestRecord, checks: Checks, failure?: Failure): Promise<object> {

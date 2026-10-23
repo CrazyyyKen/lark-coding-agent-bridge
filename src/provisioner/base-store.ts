@@ -13,7 +13,15 @@ export const CREDENTIAL = {
   saved: 'Saved',
   waiting: 'Waiting for sign-in',
   notSaved: 'Not saved',
+  /** A new seat from an approved PR: no sign-in card until the AI Team clicks "Seat added". */
+  seatPending: 'Seat not added yet',
 } as const;
+
+/**
+ * The form's "Claude seat" answer: "Active: …" or "PR approved: …" (the AI Team
+ * still has to add the seat). Matched on the start so the wording can change.
+ */
+export const needsNewSeat = (req: Pick<RequestRecord, 'claudeSeat'>): boolean => /^PR approved/i.test(req.claudeSeat.trim());
 
 export const STATUS = {
   submitted: 'Submitted',
@@ -54,6 +62,11 @@ export interface RequestRecord {
   /** The Claude account the requester says the agent will use, and who signs in to it. */
   claudeEmail: string;
   claudeHolder?: Person;
+  /** Whether that seat is active or still to be added from an approved PR (needsNewSeat). */
+  claudeSeat: string;
+  /** For a seat still to be added: the approved PR, and the names of its attached screenshots. */
+  prNumber: string;
+  prScreenshots: string[];
   status: string;
   serverBotName: string;
   cardMessageId: string;
@@ -151,6 +164,10 @@ export function toRequest(r: RawRecord): RequestRecord {
     approver: cellPeople(f.Approver)[0],
     claudeEmail: cellText(f['Claude account email']).trim().toLowerCase(),
     claudeHolder: cellPeople(f['Claude account holder'])[0],
+    claudeSeat: cellText(f['Claude seat']),
+    prNumber: cellText(f['PR number']).trim(),
+    // Attachment cells are lists of { name, file_token, … }.
+    prScreenshots: cellList(f['PR screenshot']),
     status: cellText(f.Status),
     serverBotName: cellText(f['Server bot name']).trim(),
     cardMessageId: cellText(f['Card message ID']).trim(),
@@ -265,6 +282,12 @@ export class BaseStore {
 
   async request(recordId: string): Promise<RequestRecord> {
     return toRequest(await this.get(TABLES.requests, recordId));
+  }
+
+  /** A browser link to a request's row, from the Base's own address (Settings → "Base link"). */
+  requestLink(baseLink: string, recordId: string): string {
+    const table = this.tableIds.get(TABLES.requests);
+    return table ? `${baseLink}?table=${table}&record=${recordId}` : baseLink;
   }
 
   /** The submitter as a union_id, comparable with an app's owner (lark-api.ts). */

@@ -12,7 +12,8 @@ export const FRONT_DOOR_DEFAULTS = {
   'Request guide': 'https://gdexgroup.sg.larksuite.com/wiki/NYRWwPSsYirbBokuOhBlAROzghe',
   'Request form': 'https://gdexgroup.sg.larksuite.com/share/base/form/shrlgH0hereELEP5G4uPrPcz7wb',
   'PR guide': 'https://gdexgroup.sg.larksuite.com/wiki/OMHYwW7XAiWkCZkMvy8lLVBzg7S',
-  'Support contact': 'the AI Team',
+  /** Comma-separated; emails become @mentions, which open the person's profile to message them. */
+  'Support contacts': 'ai@gdexpress.com, joeee@gdexpress.com, kenhow@gdexpress.com',
 } as const;
 
 type Links = Record<keyof typeof FRONT_DOOR_DEFAULTS, string>;
@@ -26,13 +27,24 @@ export function frontDoorLinks(settings: Record<string, string>): Links {
   return out;
 }
 
+/** Full width, one per row: side by side, phones cut the labels off. */
 function linkButton(text: string, url: string, type: string): object {
   return {
     tag: 'button',
     text: { tag: 'plain_text', content: text },
     type,
+    width: 'fill',
     behaviors: [{ type: 'open_url', default_url: url }],
   };
+}
+
+function contacts(list: string): string {
+  return list
+    .split(',')
+    .map((c) => c.trim())
+    .filter(Boolean)
+    .map((c) => (/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(c) ? `<at email=${c}></at>` : md(c)))
+    .join(' ');
 }
 
 export function frontDoorCard(links: Links): object {
@@ -57,26 +69,20 @@ export function frontDoorCard(links: Links): object {
           tag: 'markdown',
           content: [
             '**How to get one**',
-            "1. Make sure it has a **Claude account**: your own seat, or your department's (e.g. hr@gdexpress.com). No seat yet? Your department raises a Purchase Requisition first (**How to raise a PR**).",
-            '2. Follow **How to request an agent**: create your agent app in the Lark Developer Console and have your Lark admin approve it.',
-            '3. Fill in the **request form**.',
-            '4. The AI Team approves it, and your new agent messages you when it\'s ready to chat.',
+            '1. Get two things ready, at the same time:',
+            "    - A **Claude seat**: your own, or your department's (e.g. hr@gdexpress.com). No seat yet? Your department raises a Purchase Requisition (**How to raise a PR**).",
+            '    - Your **agent app**: create it in the Lark Developer Console and have your Lark admin approve it (**How to request an agent**).',
+            '2. Once the app is approved and the seat is active (or its PR approved), fill in the **request form**.',
+            '3. The AI Team approves it, and your new agent messages you when it\'s ready to chat.',
           ].join('\n'),
         },
-        {
-          tag: 'column_set',
-          flex_mode: 'flow',
-          horizontal_spacing: 'small',
-          columns: [
-            { tag: 'column', width: 'auto', elements: [linkButton('How to request an agent', links['Request guide'], 'primary')] },
-            { tag: 'column', width: 'auto', elements: [linkButton('How to raise a PR', links['PR guide'], 'default')] },
-            { tag: 'column', width: 'auto', elements: [linkButton('Request form', links['Request form'], 'default')] },
-            { tag: 'column', width: 'auto', elements: [linkButton('How to use your agent', links['User guide'], 'default')] },
-          ],
-        },
+        linkButton('How to request an agent', links['Request guide'], 'primary'),
+        linkButton('How to raise a PR for a Claude seat', links['PR guide'], 'default'),
+        linkButton('Request form', links['Request form'], 'default'),
+        linkButton('How to use your agent', links['User guide'], 'default'),
         {
           tag: 'markdown',
-          content: `I'm an automatic reply and can't answer questions. Questions about AI agents: ask ${md(links['Support contact'])}.`,
+          content: `I'm an automatic reply and can't answer questions. For help with AI agents, message the AI Team: ${contacts(links['Support contacts'])} (tap a name, then **Message**).`,
           text_size: 'notation',
         },
       ],
