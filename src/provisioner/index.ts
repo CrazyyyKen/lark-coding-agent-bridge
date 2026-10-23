@@ -7,6 +7,7 @@ import { BaseStore } from './base-store';
 import { LarkApi, appOwnerUnionId } from './lark-api';
 import { LarkBots, scriptRunner } from './lark-bots';
 import { ClaudeAccounts } from './claude-accounts';
+import { FrontDoor } from './front-door';
 import { Provisioner, type AppPort, type MembersPort } from './service';
 import { dockerSetupToken, removeLeftoverSignIns } from './setup-token';
 
@@ -186,7 +187,26 @@ export async function runProvisioner(cfg: ProvisionerConfig = configFromEnv()): 
     approvalChatId: cfg.approvalChatId,
   });
 
+  // Anyone who messages the app gets the "how to get an agent" card (no agent run).
+  let settingsCache: { at: number; value: Record<string, string> } | undefined;
+  const frontDoor = new FrontDoor({
+    settings: async () => {
+      if (!settingsCache || Date.now() - settingsCache.at > 5 * 60_000) {
+        settingsCache = { at: Date.now(), value: await store.settings() };
+      }
+      return settingsCache.value;
+    },
+    reply: async (chatId, card) => {
+      await channel.send(chatId, { card });
+    },
+  });
+
   channel.on({
+    message: async (msg) => {
+      await frontDoor
+        .handle(msg)
+        .catch((err) => log.warn('provisioner', 'front-door-failed', { err: String(err) }));
+    },
     cardAction: async (evt) => {
       const value = (evt.action.value ?? {}) as { cmd?: unknown; record?: unknown };
       if (typeof value.cmd !== 'string' || typeof value.record !== 'string') return undefined;
