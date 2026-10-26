@@ -110,6 +110,12 @@ const BRIDGE_AGENT_INSTRUCTIONS = [
   '不要 unset LARK_CHANNEL / LARK_CHANNEL_HOME / LARK_CHANNEL_PROFILE / LARKSUITE_CLI_CONFIG_DIR，也不要用 env -u LARK_CHANNEL 绕回本机普通配置。',
   'Codex bridge 默认使用 danger-full-access 对齐 Claude bridge 的 bypassPermissions 行为，因此 lark-cli 应能像用户本机终端一样访问 keychain。',
   '如果提示 lark-channel context detected but not bound，停止当前操作并请用户重启 bridge 或运行 bridge doctor/preflight；不要改用普通 profile，不要自行 bind，也不要直接读取 config.json 里的账号或密钥。',
+  // Parallel --as user calls refresh the token together; Lark answers 429 and
+  // lark-cli then clears the user's login.
+  '以用户身份（--as user 或需要用户授权）的 lark-cli 命令必须一条一条顺序执行，不要在同一轮里并行调用多条，否则它们会同时刷新 token，被限流后 lark-cli 会清掉用户登录。',
+  // The user only sees the link once the turn ends, so polling in the same turn
+  // blocks for 10 minutes with nobody able to approve.
+  '用户登录失效需要重新授权时：只运行 lark-cli auth login --no-wait --json，把 verification_url 原样写在给用户的回复正文里（不要只写在思考里），然后立即结束本轮；绝不要在同一轮里运行 --device-code。用户回复已完成授权后，下一轮再运行 lark-cli auth login --device-code <device_code>。轮询时的 authorization_pending / 400 表示用户还没批准，不是服务器故障。',
 ];
 
 // Lark SDK logs API errors at error level even when the caller catches them.
